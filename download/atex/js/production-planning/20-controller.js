@@ -7223,11 +7223,14 @@
                         windPoints: windPoints
                     });
                 }
+                // #4394: в title — id задания (объекта «Задание в производство»), чтобы из
+                // очереди можно было сразу найти запись в CRM. Формат «id N» — как в списке
+                // отклонений (renderDeviationGroup).
                 timeEl = el('div', {
                     class: 'atex-pp-cut-time',
                     role: 'button',
                     tabindex: '0',
-                    title: 'Показать тайминг резки',
+                    title: 'Показать тайминг резки · id ' + c.id,
                     text: scheduleText
                 });
                 timeEl.addEventListener('click', function() {
@@ -7252,8 +7255,21 @@
             var dayIdx = sameDayCuts.indexOf(c);
             var seqText = String((dayIdx >= 0 ? dayIdx : idx) + 1);
             var windingText = normWinding(c.winding) || String(c.winding == null ? '' : c.winding).trim() || '—';
+            // #4394: номер по порядку — ссылка на форму правки задания (/{db}/edit_obj/{id}),
+            // новая вкладка. Формат ссылки — как в отчёте о пропущенных позициях (#3608).
+            // draggable=false: перетаскивание карточки живёт на ручке ⠿ (#4306), нативный
+            // drag ссылки только мешал бы. Клик всплывает и выбирает резку, как по любому
+            // другому месту карточки (#3354 п.2).
             var infoChildren = [
-                el('span', { class: 'atex-pp-cut-seq', title: cutNumTitle, text: '№ ' + seqText })
+                el('a', {
+                    class: 'atex-pp-cut-seq',
+                    href: '/' + encodeURIComponent(self.db) + '/edit_obj/' + encodeURIComponent(c.id),
+                    target: '_blank',
+                    rel: 'noopener',
+                    draggable: 'false',
+                    title: cutNumTitle + ' · Открыть карточку задания (id ' + c.id + ')',
+                    text: '№ ' + seqText
+                })
             ];
             if (timeEl) infoChildren.push(timeEl);
             infoChildren.push(el('span', { class: 'atex-pp-cut-name', title: materialText, text: materialText }));
