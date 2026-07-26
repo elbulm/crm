@@ -89,6 +89,23 @@
         if (!slotTraceOn()) return;
         try { console.log.apply(console, ['[pp-slot]'].concat([].slice.call(arguments))); } catch (e) {}
     }
+    // #4409: трассировка «Упорядочить» — СВОЙ канал [pp-opt] (слой размещения [pp-slot] печатает,
+    // КУДА встало каждое задание, но не то, ЧТО решила сама кнопка). Один блок на нажатие:
+    // старт → кандидаты → выбор → перемещения → результат → стоп. По умолчанию ВКЛючён в браузере
+    // (заказчик #4409: «вывести трассировку упорядочивания»), выключить: window.PP_TRACE_OPTIMIZE = false.
+    // В Node/тестах МОЛЧИТ, кроме явного форса globalThis.PP_TRACE_OPTIMIZE = true.
+    function optTraceOn() {
+        try {
+            if (typeof globalThis !== 'undefined' && globalThis.PP_TRACE_OPTIMIZE === true) return true;
+            if (typeof window === 'undefined') return false;
+            if (window.PP_TRACE_OPTIMIZE === false) return false;
+            return true;
+        } catch (e) { return false; }
+    }
+    function optTrace() {
+        if (!optTraceOn()) return;
+        try { console.log.apply(console, ['[pp-opt]'].concat([].slice.call(arguments))); } catch (e) {}
+    }
     // Мин от полуночи → «ЧЧ:ММ» (для читаемого лога; отрицательные/дробные допустимы).
     function ppClock(min) {
         var m = Math.round(Number(min) || 0);

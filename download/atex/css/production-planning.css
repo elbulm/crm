@@ -952,6 +952,11 @@
 .atex-pp-toast-success { background: #15803d; }
 .atex-pp-toast-error { background: #b91c1c; }
 .atex-pp-toast-info { background: #334155; }
+/* #4409: у вида «warning» фона НЕ БЫЛО — белый текст (.atex-pp-toast color:#fff) ложился на
+   прозрачный фон, и сообщение «Просрочка не устранена…» выглядело пустым белым окном справа
+   внизу («нажал Упорядочить — ничего не происходит»). Виды тоста обязаны иметь фон: см. тест
+   experiments/atex-4409-optimize-trace.test.js (сверяет kind из notify() с правилами этого файла). */
+.atex-pp-toast-warning { background: #b45309; }
 
 /* Модалка формы новой резки (#3116 п.1) */
 .atex-pp-modal {
