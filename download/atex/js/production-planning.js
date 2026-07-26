@@ -90,6 +90,23 @@
         if (!slotTraceOn()) return;
         try { console.log.apply(console, ['[pp-slot]'].concat([].slice.call(arguments))); } catch (e) {}
     }
+    // #4409: трассировка «Упорядочить» — СВОЙ канал [pp-opt] (слой размещения [pp-slot] печатает,
+    // КУДА встало каждое задание, но не то, ЧТО решила сама кнопка). Один блок на нажатие:
+    // старт → кандидаты → выбор → перемещения → результат → стоп. По умолчанию ВКЛючён в браузере
+    // (заказчик #4409: «вывести трассировку упорядочивания»), выключить: window.PP_TRACE_OPTIMIZE = false.
+    // В Node/тестах МОЛЧИТ, кроме явного форса globalThis.PP_TRACE_OPTIMIZE = true.
+    function optTraceOn() {
+        try {
+            if (typeof globalThis !== 'undefined' && globalThis.PP_TRACE_OPTIMIZE === true) return true;
+            if (typeof window === 'undefined') return false;
+            if (window.PP_TRACE_OPTIMIZE === false) return false;
+            return true;
+        } catch (e) { return false; }
+    }
+    function optTrace() {
+        if (!optTraceOn()) return;
+        try { console.log.apply(console, ['[pp-opt]'].concat([].slice.call(arguments))); } catch (e) {}
+    }
     // Мин от полуночи → «ЧЧ:ММ» (для читаемого лога; отрицательные/дробные допустимы).
     function ppClock(min) {
         var m = Math.round(Number(min) || 0);
@@ -9169,6 +9186,8 @@
         planQuality: planQuality,                       // #3989: факт vs идеал переналадок (ТЗ §13)
         planQualityView: planQualityView,               // #3989 Фаза 3: качество из cuts контроллера
         chooseOptimizeCandidate: chooseOptimizeCandidate,   // #4047: гарантия «Упорядочить» не увеличивает переналадку
+        formatOptimizeTrace: formatOptimizeTrace,           // #4409: структурный trace «Упорядочить» → строки лога
+        optTraceOn: optTraceOn,                             // #4409: трассировка «Упорядочить» включена?
         formatQualityDelta: formatQualityDelta,          // #3989 Фаза 3: подпись избытка
         splitSupplyShares: splitSupplyShares,
         addMainValueField: addMainValueField,
@@ -11334,6 +11353,107 @@
         return { action: useA ? 'A' : 'B', obj: bestObj };
     }
 
+    // #4409: сколько ПЕРЕМЕЩЕНИЙ печатать поимённо. Остаток не замалчиваем — пишем «…и ещё N».
+    var OPT_TRACE_MOVES_LIMIT = 60;
+
+    // #4409: структурный trace «Упорядочить» → строки лога [pp-opt]. ЧИСТАЯ (покрыта тестом):
+    // на вход — уже готовые числа и ПОДПИСИ времени (форматирование дат — на стороне контроллера,
+    // чтобы функция не зависела от таймзоны). Разделы ровно те, что просил заказчик (#4409):
+    // СТАРТ → КАНДИДАТЫ → ВЫБОР → ПЕРЕМЕЩЕНИЯ → РЕЗУЛЬТАТ → СТОП.
+    //   trace = {
+    //     start:   { cutCount, fixedCount, slitterCount, windowLabel, lateBefore, coBefore },
+    //     candidates: [{ key:'B'|'A', title, skipped?, reassignCount?, late, changeover }],
+    //     choice:  { action:'none'|'B'|'A', title },
+    //     moves:   [{ cutId, slitterFrom, slitterTo, whenFrom, whenTo }], movesTotal,
+    //     creates: [{ parentCutId, when, runs }], createsTotal,
+    //     deletes: [id], deletesTotal,
+    //     result:  { before, after },   // computeQualityStats до/после проекции
+    //     stop:    { code, text }
+    //   }
+    function formatOptimizeTrace(trace) {
+        var t = trace || {};
+        var out = [];
+        function num(v) {
+            var n = Number(v);
+            return isFinite(n) ? String(round3(n)) : '—';
+        }
+        // Вердикт кандидата против текущего плана — ЛЕКСИКОГРАФИЧЕСКИ (срок §14 старше переналадки,
+        // см. LATE_DAY_WEIGHT): сперва дни опоздания, при равных — минуты переналадки.
+        function verdict(late, co, s) {
+            var dLate = round3(Number(late) - Number(s.lateBefore));
+            var dCo = round3(Number(co) - Number(s.coBefore));
+            if (dLate < 0) return 'ЛУЧШЕ: опозданий ' + num(dLate) + ' дн';
+            if (dLate > 0) return 'ХУЖЕ: опозданий +' + num(dLate) + ' дн (срок старше переналадки)';
+            if (dCo < 0) return 'ЛУЧШЕ: опоздания те же, переналадка ' + num(dCo) + ' мин';
+            if (dCo > 0) return 'ХУЖЕ: опоздания те же, переналадка +' + num(dCo) + ' мин';
+            return 'РАВНО текущему';
+        }
+        var s = t.start || {};
+        out.push('═══ УПОРЯДОЧИТЬ (#4409) ═══');
+        if (!t.start) {
+            out.push('СТАРТ: показатели текущего плана посчитать не успели (см. СТОП)');
+        } else {
+            out.push('СТАРТ: заданий ' + (s.cutCount || 0) + ' (зафиксировано ' + (s.fixedCount || 0) + '), станков '
+                + (s.slitterCount || 0) + ', окно ' + (s.windowLabel || 'весь горизонт'));
+            out.push('  текущий план: опозданий ' + num(s.lateBefore) + ' дн, переналадка ' + num(s.coBefore) + ' мин');
+        }
+        (t.candidates || []).forEach(function(c) {
+            var head = 'КАНДИДАТ ' + c.key + ' (' + c.title + ')';
+            if (c.skipped) { out.push(head + ': не считался — ' + c.skipped); return; }
+            out.push(head + (c.reassignCount != null ? ', переназначений станка ' + c.reassignCount : '')
+                + ': опозданий ' + num(c.late) + ' дн, переналадка ' + num(c.changeover) + ' мин → ' + verdict(c.late, c.changeover, s));
+        });
+        var ch = t.choice || {};
+        out.push(ch.action === 'none' || !ch.action
+            ? 'ВЫБОР: НЕТ — ни один кандидат не лучше текущего, план НЕ трогаем'
+            : ('ВЫБОР: ' + ch.action + ' — ' + (ch.title || '')));
+        var total = t.movesTotal != null ? t.movesTotal : (t.moves || []).length;
+        if (total > 0) {
+            out.push('ПЕРЕМЕЩЕНИЯ: ' + total);
+            (t.moves || []).forEach(function(m) {
+                var sameSlitter = !m.slitterTo || m.slitterTo === m.slitterFrom;
+                out.push('  ' + m.cutId + ': ' + (m.whenFrom || '—') + ' → ' + (m.whenTo || '—')
+                    + (sameSlitter ? ' (станок тот же: ' + (m.slitterFrom || '—') + ')'
+                                   : ' · станок ' + (m.slitterFrom || '—') + ' → ' + m.slitterTo));
+            });
+            if (total > (t.moves || []).length) {
+                out.push('  …и ещё ' + (total - (t.moves || []).length) + ' — поимённо показаны первые ' + (t.moves || []).length);
+            }
+        }
+        if (t.createsTotal) {
+            out.push('НОВЫЕ СЕГМЕНТЫ (появятся по «Применить»): ' + t.createsTotal);
+            (t.creates || []).forEach(function(c) {
+                out.push('  от ' + c.parentCutId + ': ' + (c.when || '—') + ', проходов ' + (c.runs == null ? '—' : c.runs));
+            });
+            if (t.createsTotal > (t.creates || []).length) {
+                out.push('  …и ещё ' + (t.createsTotal - (t.creates || []).length));
+            }
+        }
+        if (t.deletesTotal) {
+            out.push('УДАЛЯЕТСЯ ЗАПИСЕЙ: ' + t.deletesTotal + ((t.deletes || []).length ? ' — ' + t.deletes.join(', ') : '')
+                + (t.deletesTotal > (t.deletes || []).length ? ' …и ещё ' + (t.deletesTotal - t.deletes.length) : ''));
+        }
+        var r = t.result;
+        if (r && r.before && r.after) {
+            out.push('РЕЗУЛЬТАТ (окно панели «Качество плана»):');
+            out.push('  переналадки: ' + r.before.changeoverCount + ' (' + r.before.changeoverMin + ' мин) → '
+                + r.after.changeoverCount + ' (' + r.after.changeoverMin + ' мин)');
+            out.push('  ножи: ' + r.before.knifeCount + ' (' + r.before.knifeMin + ' мин) → '
+                + r.after.knifeCount + ' (' + r.after.knifeMin + ' мин); смены сырья: '
+                + r.before.materialCount + ' (' + r.before.materialMin + ' мин) → '
+                + r.after.materialCount + ' (' + r.after.materialMin + ' мин)');
+            out.push('  просрочено заданий: ' + r.before.overdue + ' → ' + r.after.overdue);
+        }
+        var st = t.stop || {};
+        out.push('СТОП: ' + (st.text || st.code || '—'));
+        return out;
+    }
+
+    function emitOptimizeTrace(trace) {
+        if (!optTraceOn()) return;
+        formatOptimizeTrace(trace).forEach(function(line) { optTrace(line); });
+    }
+
     // #4047: суммарная переналадка (мин) набора резок за весь горизонт [С; конец] — ОБЪЕКТИВ
     // «Упорядочить» (planQuality.all.changeoverMin, ВЕСА штрафов: инкремент полос, смена сырья
     // первого задания). Это НЕ показанный оператору факт: панель/тултип «Качество плана» с #4156
@@ -11414,11 +11534,23 @@
         // под кандидата; по «Отменить» возвращаем вместе со снимком очереди (иначе колонки наладки
         // считались бы по хвостам непринятого плана).
         var tailBefore = this.plannedTailSetup;
+        // #4409: трассировка нажатия — старт/кандидаты/выбор/перемещения/результат/стоп одним блоком
+        // в консоли ([pp-opt]). Заполняем по ходу, печатаем на КАЖДОМ выходе (ошибка, «не трогаем»,
+        // предпросмотр) — иначе «ничего не происходит» остаётся без объяснения (issue #4409).
+        var trace = { start: null, candidates: [], choice: null, moves: [], movesTotal: 0,
+            creates: [], createsTotal: 0, deletes: [], deletesTotal: 0, result: null, stop: null };
         function combined(late, co) { return late * LATE_DAY_WEIGHT + co; }
         try {
             coBefore = self.planChangeoverMin(self.cuts, null);
             lateBefore = self.planLatenessDays(self.cuts, null);
             before = combined(lateBefore, coBefore);
+            trace.start = {
+                cutCount: (self.cuts || []).length,
+                fixedCount: (self.cuts || []).filter(function(c) { return c && c.fixed; }).length,
+                slitterCount: (self.slitters || []).length,
+                windowLabel: self.optimizeWindowLabel(),
+                lateBefore: round3(lateBefore), coBefore: round3(coBefore)
+            };
 
             // Кандидат B: пересобрать порядок/дни на ТЕКУЩИХ станках (без переназначения).
             builtB = self.buildSequenceOps(self.cuts, PLANNING_STRATEGY_SETUP, false);
@@ -11426,6 +11558,8 @@
             coB = self.planChangeoverMin(self.cuts, mapB);
             lateB = self.planLatenessDays(self.cuts, mapB);
             objB = combined(lateB, coB);
+            trace.candidates.push({ key: 'B', title: 'порядок/дни на текущих станках',
+                late: round3(lateB), changeover: round3(coB) });
 
             // Кандидат A: переназначить станки. Считаем В ПАМЯТИ — временно подменяем станок на
             // self.cuts (buildSequenceOps/planCutOperations синхронны), меряем, ВОЗВРАЩАЕМ обратно.
@@ -11446,11 +11580,19 @@
                 coA = self.planChangeoverMin(self.cuts, mapA);
                 lateA = self.planLatenessDays(self.cuts, mapA);
                 objA = combined(lateA, coA);
+                trace.candidates.push({ key: 'A', title: 'со сменой станка',
+                    reassignCount: Object.keys(plan.slitterByRecordId || {}).length,
+                    late: round3(lateA), changeover: round3(coA) });
                 Object.keys(saved).forEach(function(mid) { var c = cutsById[mid]; if (c) c.slitter = saved[mid]; });   // вернуть станки
+            } else {
+                trace.candidates.push({ key: 'A', title: 'со сменой станка',
+                    skipped: 'переназначения станков нет (computeReassignmentPlan)' });
             }
         } catch (err) {
             self.setBusy(false);
             console.error('[pp] ⚙️ optimizeQueue: ОШИБКА расчёта', err && err.message, err && err.stack);
+            trace.stop = { code: 'error', text: 'ОШИБКА расчёта — ' + (err && err.message ? err.message : err) };
+            emitOptimizeTrace(trace);
             self.notify('Ошибка упорядочивания: ' + (err && err.message ? err.message : err), 'error');
             return;
         }
@@ -11459,11 +11601,17 @@
         var choice = chooseOptimizeCandidate(before, objB, objA, plan.changed);
         if (choice.action === 'none') {
             self.setBusy(false);
+            trace.choice = { action: 'none' };
             // #4211: при НАЛИЧИИ просрочки НЕ рапортовать «очередь оптимальна» — переставить в срок не
             // удалось (нет свободного места раньше). «Оптимальна» — только когда опозданий реально нет.
             if (round3(lateBefore) > 0) {
+                trace.stop = { code: 'none-overdue', text: 'план НЕ изменён — просрочка не устранена: опозданий '
+                    + round3(lateBefore) + ' дн, раньше в срок не размещается (нет свободного места)' };
+                emitOptimizeTrace(trace);
                 self.notify('Просрочка не устранена: опозданий ' + round3(lateBefore) + ' дн — раньше в срок не размещается (нет свободного места). Переналадка ' + round3(coBefore) + ' мин', 'warning');
             } else {
+                trace.stop = { code: 'none-optimal', text: 'план НЕ изменён — очередь уже оптимальна (опозданий 0 дн)' };
+                emitOptimizeTrace(trace);
                 self.notify('Очередь уже оптимальна (опозданий 0 дн, переналадка ' + round3(coBefore) + ' мин)', 'success');
             }
             return;
@@ -11473,6 +11621,8 @@
         var built = useA ? builtA : builtB;
         var changedUpdates = filterChangedUpdates(built.ops, built.cutsById);
         var ops = { updates: changedUpdates, creates: built.ops.creates || [], deletes: built.ops.deletes || [] };
+        trace.choice = { action: choice.action, title: useA ? 'со сменой станка' : 'порядок/дни на текущих станках' };
+        self.fillOptimizeMovesTrace(trace, ops, useA ? plan.slitterByRecordId : null);
 
         // #4402: план НЕ пишем — показываем ПРЕДПРОСМОТР: проекция на очередь в памяти (карточки
         // перерисованы, видно, что куда уехало) + липкая панель со статистикой и кнопками
@@ -11484,8 +11634,69 @@
             tailSetup: tailBefore,
             slitterChange: useA,
             coBefore: round3(coBefore), coAfter: round3(coBest),
-            lateBefore: round3(lateBefore), lateAfter: round3(lateBest)
+            lateBefore: round3(lateBefore), lateAfter: round3(lateBest),
+            trace: trace
         });
+    };
+
+    // #4409: подпись окна [С;По] фильтра для строки СТАРТ трассы.
+    AtexProductionPlanning.prototype.optimizeWindowLabel = function() {
+        var f = String((this.filter && this.filter.date) || '').trim();
+        var t = String((this.filter && this.filter.dateTo) || '').trim();
+        var from = f === '' ? '' : formatDayKey(planDateDayKey(f));
+        var to = t === '' ? '' : formatDayKey(planDateDayKey(t));
+        if (!from && !to) return 'весь горизонт';
+        return (from || '…') + ' – ' + (to || '…');
+    };
+
+    // #4409: unix-секунды планового старта → «ДД.ММ ЧЧ:ММ» для строк ПЕРЕМЕЩЕНИЙ.
+    function optTraceWhen(ts) {
+        var n = Number(ts);
+        if (!isFinite(n) || n <= 0) return '—';
+        var d = new Date(n * 1000);
+        if (isNaN(d.getTime())) return '—';
+        function p2(x) { return (x < 10 ? '0' : '') + x; }
+        return p2(d.getDate()) + '.' + p2(d.getMonth() + 1) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+    }
+
+    // #4409: раздел ПЕРЕМЕЩЕНИЯ трассы — что куда уехало относительно ТЕКУЩЕЙ очереди (self.cuts
+    // ещё не подменена проекцией). Поимённо печатаем первые OPT_TRACE_MOVES_LIMIT, остаток
+    // не замалчиваем (formatOptimizeTrace допишет «…и ещё N»).
+    AtexProductionPlanning.prototype.fillOptimizeMovesTrace = function(trace, ops, slitterByRecordId) {
+        var byId = {};
+        (this.cuts || []).forEach(function(c) { if (c) byId[String(c.id)] = c; });
+        var slitterName = {};
+        (this.slitters || []).forEach(function(s) { slitterName[String(s.id)] = s.label || s.name || ('#' + s.id); });
+        function label(sid) {
+            var k = String(sid == null ? '' : sid);
+            return k === '' ? '—' : (slitterName[k] || ('#' + k));
+        }
+        var reassign = slitterByRecordId || {};
+        var moves = [];
+        ((ops && ops.updates) || []).forEach(function(u) {
+            var c = byId[String(u.cutId)];
+            if (!c) return;
+            var fromSid = c.slitter ? c.slitter.id : '';
+            var toSid = u.slitterId != null ? u.slitterId : (reassign[String(u.cutId)] != null ? reassign[String(u.cutId)] : fromSid);
+            var whenFrom = optTraceWhen(c.number || c.planDate);
+            var whenTo = optTraceWhen(u.planStartTs);
+            // Апдейт-«родитель разбиения» может не двигаться сам (filterChangedUpdates держит его
+            // ради долей Обеспечения) — такой в перемещения не пишем, он виден в НОВЫХ СЕГМЕНТАХ.
+            if (whenFrom === whenTo && String(fromSid) === String(toSid)) return;
+            moves.push({ cutId: String(u.cutId), slitterFrom: label(fromSid), slitterTo: label(toSid),
+                whenFrom: whenFrom, whenTo: whenTo });
+        });
+        trace.movesTotal = moves.length;
+        trace.moves = moves.slice(0, OPT_TRACE_MOVES_LIMIT);
+        var creates = ((ops && ops.creates) || []).map(function(cr) {
+            return { parentCutId: String(cr.parentCutId), when: optTraceWhen(cr.planStartTs), runs: cr.plannedRuns };
+        });
+        trace.createsTotal = creates.length;
+        trace.creates = creates.slice(0, OPT_TRACE_MOVES_LIMIT);
+        var deletes = ((ops && ops.deletes) || []).map(String);
+        trace.deletesTotal = deletes.length;
+        trace.deletes = deletes.slice(0, OPT_TRACE_MOVES_LIMIT);
+        return trace;
     };
 
     // #4402: сводка качества плана по текущему this.cuts за окно [С;По] — те же числа, что панель
@@ -11528,6 +11739,10 @@
         // Показывать нечего — план уже такой (после filterChangedUpdates не осталось ни одного
         // изменения и станки не меняются). Молчать нельзя: кнопка нажата, ответ нужен.
         if (!(pOps.updates || []).length && !(pOps.creates || []).length && !(pOps.deletes || []).length && !pend.reassign) {
+            if (pend.trace) {
+                pend.trace.stop = { code: 'no-ops', text: 'план НЕ изменён — очередь уже в этом порядке (после отбора изменившихся ни одной записи)' };
+                emitOptimizeTrace(pend.trace);
+            }
             this.notify('Очередь уже в этом порядке — пересчёт ничего не меняет', 'info');
             return false;
         }
@@ -11561,6 +11776,11 @@
         console.log('[pp] ⚙️ #4402 предпросмотр «Упорядочить»: переставлено ' + pend.movedCount
             + ', новых сегментов ' + projected.createdIds.length + ', удаляется ' + projected.deletedIds.length
             + ' (в БД НЕ записано)');
+        if (pend.trace) {
+            pend.trace.result = { before: pend.before, after: pend.after };
+            pend.trace.stop = { code: 'preview', text: 'предпросмотр показан — в БД НЕ записано, ждём «Применить» / «Отменить»' };
+            emitOptimizeTrace(pend.trace);
+        }
         this.render();
         return true;
     };
@@ -11576,6 +11796,9 @@
         this.cuts = pend.snapshot;
         this.plannedTailSetup = pend.tailSetup || {};
         this.renderPlanPreviewBar();   // панель уходит сразу по нажатию: дальше идёт запись
+        optTrace('«ПРИМЕНИТЬ» — пишем показанный план в БД: заданий к обновлению '
+            + ((pend.ops && pend.ops.updates || []).length) + ', создаётся ' + ((pend.ops && pend.ops.creates || []).length)
+            + ', удаляется ' + ((pend.ops && pend.ops.deletes || []).length));
         this.setBusy(true);
         var ops = pend.ops || { updates: [], creates: [], deletes: [] };
         var hasOps = !!((ops.updates || []).length || (ops.creates || []).length || (ops.deletes || []).length);
@@ -11587,12 +11810,15 @@
             return self.applySplitPlan(ops);
         }).then(function() {
             self.setBusy(false);
+            optTrace('СТОП: план ЗАПИСАН в БД (опоздания ' + pend.lateBefore + ' → ' + pend.lateAfter
+                + ' дн, переналадка ' + pend.coBefore + ' → ' + pend.coAfter + ' мин)');
             self.notify('Очередь упорядочена: опоздания ' + pend.lateBefore + ' → ' + pend.lateAfter + ' дн, '
                 + 'переналадка ' + pend.coBefore + ' → ' + pend.coAfter + ' мин'
                 + (pend.slitterChange ? ' (со сменой станка)' : ''), 'success');
             return true;
         }).catch(function(err) {
             self.setBusy(false);
+            optTrace('СТОП: ОШИБКА записи — ' + (err && err.message ? err.message : err));
             console.error('[pp] ⚙️ optimizeQueue: ОШИБКА применения', err && err.message, err && err.stack);
             self.notify('Ошибка упорядочивания: ' + (err && err.message ? err.message : err), 'error');
             return false;
@@ -11609,6 +11835,7 @@
         this.cuts = pend.snapshot;
         this.plannedTailSetup = pend.tailSetup || {};
         this.render();
+        optTrace('СТОП: «ОТМЕНИТЬ» — план остался прежним, в БД ничего не писали');
         this.notify('Пересчёт отменён — план остался прежним', 'info');
         return true;
     };
