@@ -3447,6 +3447,58 @@
         return String((a && a.orderId) || '') === String((b && b.orderId) || '');
     }
 
+    // #4424: ГРУППЫ ЗАДАНИЙ ПОД ОБЪЕДИНЕНИЕ — одно и то же дело, разложенное по нескольким
+    // записям: один станок, один ЗАКАЗ и одна конфигурация (continuationSignature: станок|сырьё|
+    // намотка|ножи). Такие задания оператор видит как «3 задания одного заказа», хотя это одна
+    // работа: у каждого своя наладка, и они не сливаются (issue #4424). Голова группы — ПЕРВОЕ ПО
+    // ПОРЯДКУ (минимальная «Дата план»; при равенстве — меньший id, чтобы результат был устойчив).
+    //   cuts — задания (обычно очередь одного станка или весь план);
+    //   opts.skipIds — id, которые объединять НЕЛЬЗЯ (начатые #4381, замороженный день #4326,
+    //                  завершённые): такая запись не попадает ни в голову, ни в поглощаемые.
+    // Записи БЕЗ заказа (складские) не объединяем — ключа нет. Записи одной цепочки дробления
+    // (общий «ID первой части») уже суть одно задание — их не трогаем.
+    // → [{ headId, memberIds:[…], orderId, runs }] (только группы из ≥2 записей). Чистая — покрыта тестом.
+    function mergeableOrderGroups(cuts, opts){
+        opts = opts || {};
+        var skip = opts.skipIds || {};
+        var groups = {}, order = [];
+        (cuts || []).forEach(function(c){
+            if (!c || c.id == null) return;
+            if (skip[String(c.id)]) return;
+            var oid = String(c.orderId == null ? '' : c.orderId).trim();
+            if (oid === '') return;                                   // склад — без заказа не объединяем
+            var key = continuationSignature(c) + '|' + oid;
+            if (!groups[key]) { groups[key] = []; order.push(key); }
+            groups[key].push(c);
+        });
+        var out = [];
+        order.forEach(function(key){
+            var arr = groups[key];
+            if (arr.length < 2) return;
+            // Уже одна цепочка дробления (все с общим «ID первой части») — это и так одно задание.
+            var roots = {};
+            arr.forEach(function(c){
+                var fp = (c.firstPartId != null && String(c.firstPartId).trim() !== '') ? String(c.firstPartId).trim() : String(c.id);
+                roots[fp] = 1;
+            });
+            if (Object.keys(roots).length < 2) return;
+            var sorted = arr.slice().sort(function(a, b){
+                var pa = planTsSeconds(a.planDate), pb = planTsSeconds(b.planDate);
+                if (pa == null) pa = Infinity;
+                if (pb == null) pb = Infinity;
+                if (pa !== pb) return pa - pb;
+                return String(a.id).localeCompare(String(b.id), 'ru');
+            });
+            out.push({
+                headId: String(sorted[0].id),
+                memberIds: sorted.map(function(c){ return String(c.id); }),
+                orderId: String(sorted[0].orderId),
+                runs: sorted.reduce(function(s, c){ return s + (Number(c.plannedRuns) || 0); }, 0)
+            });
+        });
+        return out;
+    }
+
     // #3613: какие значки смежности дня показать на карточке очереди. Карточка —
     // первая в своём рабочем дне, если сосед слева (prev) попал в другой день; последняя —
     // если сосед справа (next) в другом дне. Значок ставим только когда соседний сегмент
@@ -3815,6 +3867,26 @@
             var id = String(c && c.id);
             if (c && c.fixed && anchorIn[id] != null) effAnchorByCut[id] = anchorIn[id];   // 🔒 держит свой день
         });
+        // #4424: 🔒, оставивший задание ЗА СРОКОМ, — недействителен: пользователь приколол задание,
+        // ожидая его В СРОК (это и написано в #4224). Пока замок дня действовал в КАЖДОЙ пробной
+        // упаковке рескью, спасти такое задание было НЕЛЬЗЯ: как его ни переставляй в очереди,
+        // realPackFn возвращал ему тот же зафиксированный день, проверка «стало раньше» не проходила,
+        // и просроченный фикс навсегда оставался в своём дне (реальный ateh: три 🔒-задания стояли на
+        // 29.07 при свободном на 267 мин 27.07 и ПУСТОМ 28.07, а отчёт врал «честный дефицит ёмкости»).
+        // Здесь копятся id, у которых рескью снял замок дня; их анкер не действует ни в пробной, ни в
+        // финальной упаковке (иначе задание отскочило бы назад). Станок 🔒 по-прежнему держит:
+        // relocateOverdueReal переставляет зафиксированное только внутри своего станка.
+        var rescuedUnpin = {};
+        function anchorsWithout(extraUnpin){
+            if (!Object.keys(rescuedUnpin).length && !(extraUnpin && Object.keys(extraUnpin).length)) return effAnchorByCut;
+            var out = {};
+            Object.keys(effAnchorByCut).forEach(function(id){
+                if (rescuedUnpin[id]) return;
+                if (extraUnpin && extraUnpin[id]) return;
+                out[id] = effAnchorByCut[id];
+            });
+            return out;
+        }
         var perPass = opts.perPassByCut || {};
         // #3974: фильтр входа по «Дате план» ∈ [С;По] (#3660 inScopeUpTo / #3918 спил-день)
         // ОТМЕНЁН. Вход планировщика = всё необеспеченное (открытые задания, отобраны вызывающим:
@@ -3914,7 +3986,9 @@
         // #4118: упаковка УЖЕ упорядоченной очереди станка splitMachineQueue (без пере-сортировки).
         // Выделено из planMachineSegs, чтобы доп. проход по РЕАЛЬНЫМ дням (relocateOverdueReal) мог
         // паковать пробные порядки на любом станке теми же параметрами (обед/отпуск/нахлёст/заправка).
-        function packOrderedMachine(ordered, key){
+        // #4424: unpin — id, чей замок дня в ЭТОЙ упаковке не действует (пробная упаковка рескью
+        // просроченного 🔒; снятые рескью замки живут в rescuedUnpin и действуют дальше везде).
+        function packOrderedMachine(ordered, key, unpin){
             var runsByCut = {};
             ordered.forEach(function(c){ runsByCut[String(c.id)] = Number(c.plannedRuns) || 0; });
             var packOpts = {
@@ -3925,7 +3999,7 @@
                 leader: opts.leader, times: opts.times,
                 perPassByCut: perPass, runsByCut: runsByCut,
                 lunchStartMin: opts.lunchStartMin, lunchDurationMin: opts.lunchDurationMin,
-                dayAnchorByCut: effAnchorByCut,   // #3974: якорь дня ТОЛЬКО за 🔒 (фикс держит свой день); свободные — от «С»
+                dayAnchorByCut: anchorsWithout(unpin),   // #3974: якорь дня ТОЛЬКО за 🔒; #4424: минус снятые рескью
                 weights: opts.weights,            // #4050: веса §8 (DEADLINE/EXACT_DEADLINE_COST_MN)
                 firstCutSetup: opts.firstCutSetup,   // #3669 п.2: настройка ножей первой задачи (от вызывающего)
                 carryPrevSetup: (opts.prevSetupBySlitter || {})[key],   // #3853: реальная заправка станка для первой резки (как окно в setupActivityColumns)
@@ -4031,10 +4105,11 @@
         merged.cuts.forEach(function(c){ if (c && c.id != null) cutById[String(c.id)] = c; });
         // #4118: реальный день ЗАВЕРШЕНИЯ каждого задания при заданном порядке очереди станка (реальная
         // упаковка splitMachineQueue с параметрами станка). realDayFn(orderIds, machineId) → {id: day}.
-        function realPackFn(orderIds, machineId){
+        // #4424: unpin — пробная упаковка БЕЗ замка дня этих заданий (рескью просроченного 🔒).
+        function realPackFn(orderIds, machineId, unpin){
             var objs = (orderIds || []).map(function(id){ return cutById[String(id)]; }).filter(Boolean);
             // #4200: календарный день; #4209/#4290: по сегментам НАМОТКИ, ПОСЛЕДНИЙ день (setup-only хвост срок не держит).
-            return windingDaysFromSegs(packOrderedMachine(objs, String(machineId)));
+            return windingDaysFromSegs(packOrderedMachine(objs, String(machineId), unpin));
         }
         var packed = packAll();
         // #4095 / ТЗ §12: срок держат РЕАЛЬНЫЕ дни splitMachineQueue, а НЕ ёмкость-оценка размещения.
@@ -4106,7 +4181,11 @@
                 // Итерация 0 на пути размещения — богатая занятость слоя (#4085); дальше — пере-сев из packed.
                 var occ4118 = (oR4203 === 0 && slotPlan && slotPlan.occupancy) ? slotPlan.occupancy : occupancyFromCurrentOrder();
                 var rel2 = relocateOverdueReal(occ4118, opts.dueDayByCut, realPackFn,
-                    slotExtend(refineCtx4200, { feasibleMachine: opts.feasibleMachineFor }));
+                    slotExtend(refineCtx4200, { feasibleMachine: opts.feasibleMachineFor,
+                        // #4424: рескью снял замок дня у просроченного 🔒 — держим это до конца прогона,
+                        // иначе финальная упаковка вернёт задание на прежний просроченный день.
+                        rescueUnpinIds: opts.rescueUnpinIds,
+                        onUnpinFixed: function(id){ rescuedUnpin[String(id)] = 1; } }));
                 if (rel2.moves.length) {
                     overduePass.moves += rel2.moves.length;
                     rel2.moves.forEach(function(m){ overduePass.moveLog.push(m); });

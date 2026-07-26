@@ -5662,6 +5662,58 @@
         return String((a && a.orderId) || '') === String((b && b.orderId) || '');
     }
 
+    // #4424: ГРУППЫ ЗАДАНИЙ ПОД ОБЪЕДИНЕНИЕ — одно и то же дело, разложенное по нескольким
+    // записям: один станок, один ЗАКАЗ и одна конфигурация (continuationSignature: станок|сырьё|
+    // намотка|ножи). Такие задания оператор видит как «3 задания одного заказа», хотя это одна
+    // работа: у каждого своя наладка, и они не сливаются (issue #4424). Голова группы — ПЕРВОЕ ПО
+    // ПОРЯДКУ (минимальная «Дата план»; при равенстве — меньший id, чтобы результат был устойчив).
+    //   cuts — задания (обычно очередь одного станка или весь план);
+    //   opts.skipIds — id, которые объединять НЕЛЬЗЯ (начатые #4381, замороженный день #4326,
+    //                  завершённые): такая запись не попадает ни в голову, ни в поглощаемые.
+    // Записи БЕЗ заказа (складские) не объединяем — ключа нет. Записи одной цепочки дробления
+    // (общий «ID первой части») уже суть одно задание — их не трогаем.
+    // → [{ headId, memberIds:[…], orderId, runs }] (только группы из ≥2 записей). Чистая — покрыта тестом.
+    function mergeableOrderGroups(cuts, opts){
+        opts = opts || {};
+        var skip = opts.skipIds || {};
+        var groups = {}, order = [];
+        (cuts || []).forEach(function(c){
+            if (!c || c.id == null) return;
+            if (skip[String(c.id)]) return;
+            var oid = String(c.orderId == null ? '' : c.orderId).trim();
+            if (oid === '') return;                                   // склад — без заказа не объединяем
+            var key = continuationSignature(c) + '|' + oid;
+            if (!groups[key]) { groups[key] = []; order.push(key); }
+            groups[key].push(c);
+        });
+        var out = [];
+        order.forEach(function(key){
+            var arr = groups[key];
+            if (arr.length < 2) return;
+            // Уже одна цепочка дробления (все с общим «ID первой части») — это и так одно задание.
+            var roots = {};
+            arr.forEach(function(c){
+                var fp = (c.firstPartId != null && String(c.firstPartId).trim() !== '') ? String(c.firstPartId).trim() : String(c.id);
+                roots[fp] = 1;
+            });
+            if (Object.keys(roots).length < 2) return;
+            var sorted = arr.slice().sort(function(a, b){
+                var pa = planTsSeconds(a.planDate), pb = planTsSeconds(b.planDate);
+                if (pa == null) pa = Infinity;
+                if (pb == null) pb = Infinity;
+                if (pa !== pb) return pa - pb;
+                return String(a.id).localeCompare(String(b.id), 'ru');
+            });
+            out.push({
+                headId: String(sorted[0].id),
+                memberIds: sorted.map(function(c){ return String(c.id); }),
+                orderId: String(sorted[0].orderId),
+                runs: sorted.reduce(function(s, c){ return s + (Number(c.plannedRuns) || 0); }, 0)
+            });
+        });
+        return out;
+    }
+
     // #3613: какие значки смежности дня показать на карточке очереди. Карточка —
     // первая в своём рабочем дне, если сосед слева (prev) попал в другой день; последняя —
     // если сосед справа (next) в другом дне. Значок ставим только когда соседний сегмент
@@ -6030,6 +6082,26 @@
             var id = String(c && c.id);
             if (c && c.fixed && anchorIn[id] != null) effAnchorByCut[id] = anchorIn[id];   // 🔒 держит свой день
         });
+        // #4424: 🔒, оставивший задание ЗА СРОКОМ, — недействителен: пользователь приколол задание,
+        // ожидая его В СРОК (это и написано в #4224). Пока замок дня действовал в КАЖДОЙ пробной
+        // упаковке рескью, спасти такое задание было НЕЛЬЗЯ: как его ни переставляй в очереди,
+        // realPackFn возвращал ему тот же зафиксированный день, проверка «стало раньше» не проходила,
+        // и просроченный фикс навсегда оставался в своём дне (реальный ateh: три 🔒-задания стояли на
+        // 29.07 при свободном на 267 мин 27.07 и ПУСТОМ 28.07, а отчёт врал «честный дефицит ёмкости»).
+        // Здесь копятся id, у которых рескью снял замок дня; их анкер не действует ни в пробной, ни в
+        // финальной упаковке (иначе задание отскочило бы назад). Станок 🔒 по-прежнему держит:
+        // relocateOverdueReal переставляет зафиксированное только внутри своего станка.
+        var rescuedUnpin = {};
+        function anchorsWithout(extraUnpin){
+            if (!Object.keys(rescuedUnpin).length && !(extraUnpin && Object.keys(extraUnpin).length)) return effAnchorByCut;
+            var out = {};
+            Object.keys(effAnchorByCut).forEach(function(id){
+                if (rescuedUnpin[id]) return;
+                if (extraUnpin && extraUnpin[id]) return;
+                out[id] = effAnchorByCut[id];
+            });
+            return out;
+        }
         var perPass = opts.perPassByCut || {};
         // #3974: фильтр входа по «Дате план» ∈ [С;По] (#3660 inScopeUpTo / #3918 спил-день)
         // ОТМЕНЁН. Вход планировщика = всё необеспеченное (открытые задания, отобраны вызывающим:
@@ -6129,7 +6201,9 @@
         // #4118: упаковка УЖЕ упорядоченной очереди станка splitMachineQueue (без пере-сортировки).
         // Выделено из planMachineSegs, чтобы доп. проход по РЕАЛЬНЫМ дням (relocateOverdueReal) мог
         // паковать пробные порядки на любом станке теми же параметрами (обед/отпуск/нахлёст/заправка).
-        function packOrderedMachine(ordered, key){
+        // #4424: unpin — id, чей замок дня в ЭТОЙ упаковке не действует (пробная упаковка рескью
+        // просроченного 🔒; снятые рескью замки живут в rescuedUnpin и действуют дальше везде).
+        function packOrderedMachine(ordered, key, unpin){
             var runsByCut = {};
             ordered.forEach(function(c){ runsByCut[String(c.id)] = Number(c.plannedRuns) || 0; });
             var packOpts = {
@@ -6140,7 +6214,7 @@
                 leader: opts.leader, times: opts.times,
                 perPassByCut: perPass, runsByCut: runsByCut,
                 lunchStartMin: opts.lunchStartMin, lunchDurationMin: opts.lunchDurationMin,
-                dayAnchorByCut: effAnchorByCut,   // #3974: якорь дня ТОЛЬКО за 🔒 (фикс держит свой день); свободные — от «С»
+                dayAnchorByCut: anchorsWithout(unpin),   // #3974: якорь дня ТОЛЬКО за 🔒; #4424: минус снятые рескью
                 weights: opts.weights,            // #4050: веса §8 (DEADLINE/EXACT_DEADLINE_COST_MN)
                 firstCutSetup: opts.firstCutSetup,   // #3669 п.2: настройка ножей первой задачи (от вызывающего)
                 carryPrevSetup: (opts.prevSetupBySlitter || {})[key],   // #3853: реальная заправка станка для первой резки (как окно в setupActivityColumns)
@@ -6246,10 +6320,11 @@
         merged.cuts.forEach(function(c){ if (c && c.id != null) cutById[String(c.id)] = c; });
         // #4118: реальный день ЗАВЕРШЕНИЯ каждого задания при заданном порядке очереди станка (реальная
         // упаковка splitMachineQueue с параметрами станка). realDayFn(orderIds, machineId) → {id: day}.
-        function realPackFn(orderIds, machineId){
+        // #4424: unpin — пробная упаковка БЕЗ замка дня этих заданий (рескью просроченного 🔒).
+        function realPackFn(orderIds, machineId, unpin){
             var objs = (orderIds || []).map(function(id){ return cutById[String(id)]; }).filter(Boolean);
             // #4200: календарный день; #4209/#4290: по сегментам НАМОТКИ, ПОСЛЕДНИЙ день (setup-only хвост срок не держит).
-            return windingDaysFromSegs(packOrderedMachine(objs, String(machineId)));
+            return windingDaysFromSegs(packOrderedMachine(objs, String(machineId), unpin));
         }
         var packed = packAll();
         // #4095 / ТЗ §12: срок держат РЕАЛЬНЫЕ дни splitMachineQueue, а НЕ ёмкость-оценка размещения.
@@ -6321,7 +6396,11 @@
                 // Итерация 0 на пути размещения — богатая занятость слоя (#4085); дальше — пере-сев из packed.
                 var occ4118 = (oR4203 === 0 && slotPlan && slotPlan.occupancy) ? slotPlan.occupancy : occupancyFromCurrentOrder();
                 var rel2 = relocateOverdueReal(occ4118, opts.dueDayByCut, realPackFn,
-                    slotExtend(refineCtx4200, { feasibleMachine: opts.feasibleMachineFor }));
+                    slotExtend(refineCtx4200, { feasibleMachine: opts.feasibleMachineFor,
+                        // #4424: рескью снял замок дня у просроченного 🔒 — держим это до конца прогона,
+                        // иначе финальная упаковка вернёт задание на прежний просроченный день.
+                        rescueUnpinIds: opts.rescueUnpinIds,
+                        onUnpinFixed: function(id){ rescuedUnpin[String(id)] = 1; } }));
                 if (rel2.moves.length) {
                     overduePass.moves += rel2.moves.length;
                     rel2.moves.forEach(function(m){ overduePass.moveLog.push(m); });
@@ -9027,6 +9106,15 @@
                 if (pos < 0) continue;
                 var slot = arr[pos];
                 arr.splice(pos, 1);   // снять с текущего места — оцениваем ЧИСТЫЕ станки-приёмники
+                // #4424: у ПРОСРОЧЕННОГО 🔒 замок дня в пробной упаковке НЕ действует. Иначе спасти его
+                // нельзя в принципе: как ни переставляй в очереди, упаковщик возвращает ему тот же
+                // зафиксированный день (dayAnchorByCut), проверка «стало раньше» не проходит — и #4224
+                // («рескьюем даже зафиксированное») оставался мёртвой буквой. Замок дня, оставивший
+                // задание за сроком, недействителен; станок 🔒 держит по-прежнему (условие ниже).
+                // Снимать замок вправе только у НАСТОЯЩЕЙ фиксации (ctx.rescueUnpinIds — из контроллера:
+                // временные пины переноса/заморозки/начатого туда не попадают, #4424).
+                var mayUnpin = slot.fixed && (!ctx.rescueUnpinIds || ctx.rescueUnpinIds[task.id]);
+                var unpinSelf = mayUnpin ? (function(){ var u = {}; u[task.id] = 1; return u; })() : null;
                 var best = null;      // { tid, idx, real, penalty }
                 Object.keys(byMachine).forEach(function(tid){
                     if (!feasible(tid, slot)) return;
@@ -9035,7 +9123,7 @@
                     if (slot.fixed && String(tid) !== String(sid)) return;
                     var tarr = byMachine[tid];
                     var baseIds = cutIdsOf(tid);
-                    var baseReal = realDayFn(baseIds, tid) || {};   // дни приёмника БЕЗ задания (для проверки «не навредили»)
+                    var baseReal = realDayFn(baseIds, tid, unpinSelf) || {};   // дни приёмника БЕЗ задания (для проверки «не навредили»)
                     var fixedOnTid = {};   // #4224: чужие фиксы приёмника — их НЕЛЬЗЯ вытолкнуть на день позже
                     tarr.forEach(function(s){ if (s && s.kind === 'cut' && s.fixed) fixedOnTid[String(s.id)] = 1; });
                     for (var idx = 0; idx <= tarr.length; idx++){
@@ -9043,7 +9131,7 @@
                         var before = tarr.slice(0, idx).filter(function(s){ return s && s.kind === 'cut'; }).map(function(s){ return String(s.id); });
                         var after = tarr.slice(idx).filter(function(s){ return s && s.kind === 'cut'; }).map(function(s){ return String(s.id); });
                         var trialIds = before.concat([task.id], after);
-                        var real = realDayFn(trialIds, tid) || {};
+                        var real = realDayFn(trialIds, tid, unpinSelf) || {};
                         var myReal = real[task.id];
                         if (myReal == null || Number(myReal) >= task.curReal) continue;   // не улучшает СВОЙ реальный день — мимо
                         // #4338: ВЫТЕСНЕНИЕ несрочного соседа под срочное. Раньше вставка отвергалась, если
@@ -9077,7 +9165,10 @@
                 });
                 if (best){
                     byMachine[best.tid].splice(best.idx, 0, tagSlot(slot, best.tid));
-                    moves.push({ id: task.id, from: sid, to: best.tid, real: best.real });
+                    moves.push({ id: task.id, from: sid, to: best.tid, real: best.real, unpinned: !!slot.fixed });
+                    // #4424: замок дня снят НАВСЕГДА в этом прогоне — иначе финальная упаковка вернула бы
+                    // задание на прежний (просроченный) день, и рескью выглядел бы «перенос без эффекта».
+                    if (mayUnpin && typeof ctx.onUnpinFixed === 'function') ctx.onUnpinFixed(task.id);
                     changed = true;
                 } else {
                     arr.splice(pos, 0, slot);   // некуда лучше — вернуть на место
@@ -9440,6 +9531,7 @@
         formatDowntimeBound: formatDowntimeBound,                 // #3787
         continuationSignature: continuationSignature,
         isDaySplitSibling: isDaySplitSibling,
+        mergeableOrderGroups: mergeableOrderGroups,   // #4424: задания одного заказа+конфигурации → объединить по первому
         daySplitBadges: daySplitBadges,
         daySplitWarning: daySplitWarning,   // #4304: плашка «разорвано по дням» (просрочено ИЛИ зафиксировано)
         boundaryDaySibling: boundaryDaySibling,   // #3737
@@ -15192,6 +15284,168 @@
             });
     };
 
+    // #4424: ОБЪЕДИНЕНИЕ заданий одного заказа и одной конфигурации В ОДНО — «по первому по порядку».
+    // Оператор видит «3 задания одного заказа» там, где работа одна: у каждого своя наладка, они не
+    // сливаются и разъезжаются по дням. Голова — ПЕРВОЕ ПО ПОРЯДКУ (минимальная «Дата план»,
+    // mergeableOrderGroups); остальные записи в неё вливаются и удаляются.
+    // Данные не теряем — это главное:
+    //   • «Партия ГП» поглощаемого задания той же ШИРИНЫ вливается в партию головы: «Обеспечения»
+    //     перевешиваются на партию головы (реквизит «Партия ГП»), рулоны/план суммируются, «ID заказа»
+    //     объединяется; сама партия-донор удаляется;
+    //   • партия ширины, которой у головы нет, ПЕРЕЕЗЖАЕТ под голову целиком (`_m_move&up=`);
+    //   • «Кол-во план» партий головы пересчитывается: полос × новые проходы;
+    //   • голова получает сумму проходов и пересчитанные «Длительность, минут» / «Тайминг».
+    // Не объединяем: начатые (#4381), задания замороженных дней (#4326), завершённые, складские
+    // (без заказа) и уже единую цепочку дробления (общий «ID первой части»).
+    // → Promise<число слитых записей>; 0 — сливать нечего (идемпотентно).
+    AtexProductionPlanning.prototype.mergeSameOrderTasks = function() {
+        var self = this;
+        this._ppOp = 'mergeSameOrderTasks';   // #4177: контекст трассы записей
+        var cutMeta = this.meta.cut, fbMeta = this.meta.finishedBatch, supMeta = this.meta.supply;
+        if (!cutMeta || !fbMeta || !supMeta) return Promise.resolve(0);
+        // Кого объединять нельзя (см. выше).
+        var skipIds = {};
+        var baseMs4424 = planBaseMidnightFrom(this.filter && this.filter.date, controllerNowMs(this));
+        (this.cuts || []).forEach(function(c) {
+            if (!c) return;
+            if (cutIsStarted(c)) { skipIds[String(c.id)] = 1; return; }                       // #4381
+            if (planTsSeconds(c.endDate) != null) { skipIds[String(c.id)] = 1; return; }      // завершённое
+            if (typeof self.dayIsFrozen === 'function' && self.dayIsFrozen(c.planDate)) { skipIds[String(c.id)] = 1; return; }   // #4326
+            // Прошлые дни (раньше «С») не переписываем — их раскладку планировщик тоже не трогает (#4294).
+            var off = dayOffsetFromBase(c.planDate, baseMs4424);
+            if (off != null && off < 0) skipIds[String(c.id)] = 1;
+        });
+        var groups = mergeableOrderGroups(this.cuts || [], { skipIds: skipIds });
+        if (!groups.length) return Promise.resolve(0);
+        var cutById = {};
+        (this.cuts || []).forEach(function(c) { if (c && c.id != null) cutById[String(c.id)] = c; });
+        var supByCut = {};
+        (this.supplies || []).forEach(function(s) {
+            if (s && s.cutId != null) (supByCut[String(s.cutId)] = supByCut[String(s.cutId)] || []).push(s);
+        });
+        var runsReqId = reqIdByAnyName(cutMeta, CUT_PLANNED_RUNS_NAMES);
+        var durReqId = reqIdByName(cutMeta, CUT_REQ.duration);
+        var timingReqId = reqIdByName(cutMeta, CUT_REQ.timing);
+        var fbWidthIdx = columnIndex(fbMeta, FINISHED_BATCH_REQ.width);
+        var fbStripsIdx = columnIndex(fbMeta, FINISHED_BATCH_REQ.strips);
+        var fbRollsIdx = columnIndex(fbMeta, FINISHED_BATCH_REQ.rolls);
+        var fbPlannedIdx = columnIndex(fbMeta, FINISHED_BATCH_REQ.planned);
+        var fbOrderIdx = columnIndex(fbMeta, FINISHED_BATCH_REQ.orderId);
+        var fbRollsReq = reqIdByName(fbMeta, FINISHED_BATCH_REQ.rolls);
+        var fbPlannedReq = reqIdByName(fbMeta, FINISHED_BATCH_REQ.planned);
+        var fbOrderReq = reqIdByName(fbMeta, FINISHED_BATCH_REQ.orderId);
+        var supBatchReq = reqIdByName(supMeta, SUPPLY_REQ.finishedBatch);
+        if (!runsReqId || !supBatchReq) {
+            console.error('[pp] ❌ #4424: объединение заданий невозможно — нет реквизита «' +
+                (!runsReqId ? CUT_PLANNED_RUNS_NAMES[0] : SUPPLY_REQ.finishedBatch) + '» в метаданных');
+            return Promise.resolve(0);
+        }
+        function batchesOf(cutId) {
+            return self.getJson('object/' + fbMeta.id + '/?JSON_OBJ&F_U=' + encodeURIComponent(cutId) + '&LIMIT=0,500')
+                .then(function(rows) {
+                    return (rows || []).map(function(rec) {
+                        var r = rec.r || [];
+                        return { id: String(rec.i),
+                            width: fbWidthIdx >= 0 ? stripNum(r[fbWidthIdx]) : 0,
+                            strips: fbStripsIdx >= 0 ? stripNum(r[fbStripsIdx]) : 0,
+                            rolls: fbRollsIdx >= 0 ? stripNum(r[fbRollsIdx]) : 0,
+                            planned: fbPlannedIdx >= 0 ? stripNum(r[fbPlannedIdx]) : 0,
+                            orderId: (fbOrderIdx >= 0 && r[fbOrderIdx] != null) ? String(r[fbOrderIdx]).trim() : '' };
+                    });
+                });
+        }
+        function mergeOrderIds(a, b) {
+            var seen = {}, out = [];
+            (String(a || '') + ',' + String(b || '')).split(',').forEach(function(x) {
+                var v = x.trim();
+                if (v === '' || seen[v]) return;
+                seen[v] = 1; out.push(v);
+            });
+            return out.join(',');
+        }
+        var mergedCount = 0, report = [];
+        var chain = groups.reduce(function(acc, g) {
+            return acc.then(function() {
+                var head = cutById[g.headId];
+                if (!head) return;
+                var donors = g.memberIds.slice(1).map(function(id) { return cutById[id]; }).filter(Boolean);
+                if (!donors.length) return;
+                return batchesOf(g.headId).then(function(headBatches) {
+                    var byWidth = {};
+                    headBatches.forEach(function(b) { byWidth[stripWidthKey(b.width)] = b; });
+                    // Каждого донора обрабатываем последовательно: партии → обеспечения → удаление записи.
+                    return donors.reduce(function(dChain, donor) {
+                        return dChain.then(function() {
+                            return batchesOf(donor.id).then(function(donorBatches) {
+                                var supplies = supByCut[String(donor.id)] || [];
+                                return donorBatches.reduce(function(bChain, db) {
+                                    return bChain.then(function() {
+                                        var target = byWidth[stripWidthKey(db.width)];
+                                        if (!target) {
+                                            // Ширины у головы нет — переносим партию под голову как есть.
+                                            return self.post('_m_move/' + encodeURIComponent(db.id) + '?JSON&up=' + encodeURIComponent(g.headId), {})
+                                                .then(function() { byWidth[stripWidthKey(db.width)] = db; });
+                                        }
+                                        // Обеспечения донорской партии — на партию головы.
+                                        var moveSup = supplies.filter(function(s) { return String(s.finishedBatchId) === String(db.id); })
+                                            .reduce(function(sChain, s) {
+                                                return sChain.then(function() {
+                                                    var f = {}; f['t' + supBatchReq] = String(target.id);
+                                                    return self.post('_m_set/' + encodeURIComponent(s.id) + '?JSON', f);
+                                                });
+                                            }, Promise.resolve());
+                                        return moveSup.then(function() {
+                                            target.rolls = round3(target.rolls + db.rolls);
+                                            target.orderId = mergeOrderIds(target.orderId, db.orderId);
+                                            return self.post('_m_del/' + encodeURIComponent(db.id) + '?JSON', {});
+                                        });
+                                    });
+                                }, Promise.resolve());
+                            }).then(function() {
+                                return self.post('_m_del/' + encodeURIComponent(donor.id) + '?JSON', {});
+                            }).then(function() { mergedCount += 1; });
+                        });
+                    }, Promise.resolve()).then(function() {
+                        // Голова: сумма проходов + пересчитанные тайминг-поля и «Кол-во план» партий.
+                        var runLength = cutRunLength(head, self.supplies, self.positionLengthById);
+                        var fields = {};
+                        fields['t' + runsReqId] = String(g.runs);
+                        if (durReqId) {
+                            var dur = plannedCutDurationMinutes(runLength, g.runs, self.opTimes, !!head.isFoil);
+                            fields['t' + durReqId] = dur > 0 ? String(Math.ceil(dur)) : '';
+                        }
+                        if (timingReqId) fields['t' + timingReqId] = cutTimingDetails(runLength, g.runs, self.opTimes, !!head.isFoil);
+                        return self.post('_m_set/' + encodeURIComponent(g.headId) + '?JSON', fields).then(function() {
+                            return Object.keys(byWidth).reduce(function(uChain, w) {
+                                var b = byWidth[w];
+                                return uChain.then(function() {
+                                    var f = {};
+                                    if (fbPlannedReq) f['t' + fbPlannedReq] = String(round3(b.strips * g.runs));
+                                    if (fbRollsReq) f['t' + fbRollsReq] = String(round3(b.rolls));
+                                    if (fbOrderReq && b.orderId) f['t' + fbOrderReq] = String(b.orderId);
+                                    if (!Object.keys(f).length) return;
+                                    return self.post('_m_set/' + encodeURIComponent(b.id) + '?JSON', f);
+                                });
+                            }, Promise.resolve());
+                        });
+                    }).then(function() {
+                        report.push('заказ ' + g.orderId + ': ' + g.memberIds.length + ' → 1 (задание ' + g.headId + ', проходов ' + g.runs + ')');
+                    });
+                });
+            });
+        }, Promise.resolve());
+        return chain.then(function() {
+            if (!mergedCount) return 0;
+            console.log('[pp] 🔗 #4424 объединено заданий: ' + mergedCount + ' — ' + report.join('; '));
+            self.notify('Объединено заданий одного заказа: ' + mergedCount + ' (' + report.join('; ') + ')', 'success');
+            return self.reload().then(function() { return mergedCount; });
+        }).catch(function(err) {
+            console.error('[pp] ❌ #4424 объединение заданий прервано:', err && err.message, err && err.stack);
+            self.notify('Не удалось объединить задания одного заказа: ' + (err && err.message || err), 'error');
+            return self.reload().then(function() { return mergedCount; });
+        });
+    };
+
     // #4175: ВОССТАНОВЛЕНИЕ пропавшей связи «задание ↔ заказ» после дробления по дням.
     // Симптом (#4163→#4175, «пустой срок / нет связей»): задание ВЫПУСКАЕТ заказ — его «Партия ГП»
     // несёт «ID заказа» и проходы дают ровно спрос позиции, — но НИ ОДНОГО «Обеспечения» на его
@@ -15987,6 +16241,18 @@
         // c.fixed (как 🔒 «замок дня») — planCutOperations держит его день (effAnchorByCut от «Даты
         // план»), остальное раскладывает по срокам вокруг. Замок снимаем в finally (c.fixed мутируем на
         // общих объектах self.cuts только на время планирования). Без moveScope — прежнее поведение.
+        // #4424: рескью просроченных вправе снять ЗАМОК ДНЯ только у НАСТОЯЩЕЙ фиксации «Зафиксировано»
+        // (пользователь приколол задание, ожидая его В СРОК — см. #4224). Временные пины ниже —
+        // перенос 🗓 (#4074), замороженный день (#4326), начатое задание (#4381) — не фиксация
+        // пользователя: перенос только что сделан руками, замороженный день не трогает никакая
+        // автоматика, а начатое задание физически идёт на станке. Их id сюда НЕ попадают.
+        // Задание, чей день ЗАМОРОЖЕН, тоже не отдаём рескью, даже если оно 🔒: заморозка старше.
+        var rescueUnpinIds = {};
+        planInput.forEach(function(c){
+            if (!c || !c.fixed) return;
+            if (typeof self.dayIsFrozen === 'function' && self.dayIsFrozen(c.planDate)) return;
+            rescueUnpinIds[String(c.id)] = true;
+        });
         var pinnedRestore = [];
         if (moveScope && moveScope.pinCutIds && moveScope.pinCutIds.length) {
             var pinSet = {};
@@ -16044,6 +16310,7 @@
             dayLockByCut: dayLockByCut,   // #4221: перенос «По весу» — замок дня/станка (позиция в дне по весу)
             machineLockByCut: machineLockByCut,   // #4225: «В пределах одного станка» — задание не мигрирует между станками
             dueDayByCut: dueDayByCut,   // #4050: срок каждой резки (индекс дня от «С») для §8-штрафа размещения
+            rescueUnpinIds: rescueUnpinIds,   // #4424: у кого рескью вправе снять замок дня (настоящая 🔒, день не заморожен)
             firstCutSetup: true,   // #3669 п.2: первая задача очереди резервирует настройку ножей
             prevSetupBySlitter: prevSetupBySlitter,   // #3876: станок в отпуске обнулён; #4300/#4312: заправка из заданий прошлых дней
             gapFill: true,   // #3739: не оставлять простоев в смене — тянуть будущие резки в хвост, нахлёст разрешён
@@ -16075,6 +16342,19 @@
     AtexProductionPlanning.prototype.autoSequenceQueue = function(strategy, preserveOrder, moveScope) {
         var self = this;
         this._ppOp = 'autoSequenceQueue';   // #4177: контекст трассы записей (async)
+        if (!(self.cuts && self.cuts.length)) return Promise.resolve(false);
+        // #4424: ПЕРЕД раскладкой сливаем задания одного заказа и одной конфигурации в ОДНО «по
+        // первому по порядку» (mergeSameOrderTasks): иначе одна работа живёт тремя записями, каждая
+        // со своей наладкой, и разъезжается по дням. Слияние идёт в БД и перечитывает очередь, дальше
+        // планируем уже объединённое. Нечего сливать → 0 и ни одной записи (идемпотентно).
+        return self.mergeSameOrderTasks().then(function() {
+            return self.autoSequenceQueueAfterMerge(strategy, preserveOrder, moveScope);
+        });
+    };
+
+    // #4424: раскладка как раньше — вызывается после объединения дублей заказа.
+    AtexProductionPlanning.prototype.autoSequenceQueueAfterMerge = function(strategy, preserveOrder, moveScope) {
+        var self = this;
         if (!(self.cuts && self.cuts.length)) return Promise.resolve(false);
         var built = self.buildSequenceOps(self.cuts, strategy, preserveOrder, moveScope);   // #4074: moveScope.pinCutIds — закрепить перенесённое задание при пересборке по срокам
         var ops = built.ops;
