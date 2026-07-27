@@ -12839,6 +12839,16 @@
         // Колонки наладки проекции — в памяти (без записи). updates несут прежние значения (was*),
         // из них #4417 берёт изменения ТАЙМИНГА: их не видно по planStart, но применение их запишет.
         var setupRes = this.computeCutSetupUpdates(null);
+        // #4444: ПОКАЗЫВАЕМ РОВНО ТО, ЧТО ЗАПИШЕТСЯ. «Дату план» считает упаковщик, а колонки
+        // наладки — computeCutSetupUpdates; расхождение этих двух расчётов рисуется на карточках
+        // дырами и наложениями («если одно задание заканчивается в 14:38, я ожидаю увидеть другое,
+        // начинающееся в это же время, а времена вообще никакие не совпадают — как проверять?») и
+        // уводит последнее задание за конец смены (17:52 при потолке 16:40), хотя сумма минут дня в
+        // норме. Записываемый план мы уже сводим встык (#4438, reconcilePlanStarts) — значит и
+        // ПОКАЗЫВАТЬ надо сведённый, иначе предпросмотр показывает то, чего никогда не будет.
+        // Сводим ПРОЕКЦИЮ и тем же сдвигом правим ops, чтобы «Применить» записал ровно показанное.
+        var stitched = this.reconcilePreviewStarts(pend.ops);
+        if (stitched) setupRes = this.computeCutSetupUpdates(null);   // порядок в дне не менялся, но колонки перечитываем от новых стартов
         pend.after = this.computeQualityStats(scopeFromKey, scopeToKey);
         pend.snapshot = snapshot;
         pend.createdIds = projected.createdIds;
@@ -17764,6 +17774,54 @@
             self.notify('Ошибка перестановки: ' + (err && err.message || err), 'error');
             return false;
         });
+    };
+
+    // #4444: свести СТАРТЫ ПРОЕКЦИИ предпросмотра встык — тем же расчётом, что «↻ Пересчитать
+    // наладку» и сводка после записи (#4438). Работает по this.cuts (это уже проекция плана) и
+    // правит ДВЕ вещи разом:
+    //   • сами резки проекции — их и рисуют карточки, поэтому конец одного задания совпадает с
+    //     началом следующего, а день заканчивается там, где велит сумма минут;
+    //   • ops — то, что запишет «Применить»: показанное и записываемое обязаны совпадать.
+    // Синтетические сегменты дробления (id `preview:N`) записи не имеют — им правим соответствующую
+    // строку ops.creates (порядок в projectPlanOnCuts тот же). Замороженные дни не трогаются
+    // (recalcScopeCutIds их отсекает, #4436). → число сведённых заданий.
+    AtexProductionPlanning.prototype.reconcilePreviewStarts = function(ops) {
+        var self = this;
+        if (!(this.cuts && this.cuts.length)) return 0;
+        var byId = {};
+        this.cuts.forEach(function(c) { if (c && c.id != null) byId[String(c.id)] = c; });
+        var updateByCut = {};
+        ((ops && ops.updates) || []).forEach(function(u) { if (u) updateByCut[String(u.cutId)] = u; });
+        var creates = (ops && ops.creates) || [];
+        var fixed = 0;
+        (this.slitters || []).forEach(function(s) {
+            var sid = String(s && s.id == null ? '' : s.id);
+            if (sid === '') return;
+            self.recalcStartUpdates(sid).forEach(function(u) {
+                var c = byId[String(u.cutId)];
+                if (!c) return;
+                c.planDate = String(u.ts);
+                c.number = String(u.ts);
+                fixed++;
+                if (isPreviewCutId(u.cutId)) {
+                    // `preview:N` → N-я строка ops.creates (projectPlanOnCuts нумерует их по порядку).
+                    var n = Number(String(u.cutId).slice(String(u.cutId).indexOf(':') + 1));
+                    if (creates[n - 1]) creates[n - 1].planStartTs = u.ts;
+                    return;
+                }
+                if (updateByCut[String(u.cutId)]) updateByCut[String(u.cutId)].planStartTs = u.ts;
+                else if (ops && ops.updates) {
+                    ops.updates.push({ cutId: String(u.cutId), planStartTs: u.ts, plannedRuns: c.plannedRuns });
+                }
+            });
+        });
+        if (fixed) {
+            try {
+                console.warn('[pp] ⚠️ #4444: план упаковщика разошёлся с хранимой наладкой — предпросмотр '
+                    + 'показан СВЕДЁННЫМ встык (столько же запишет «Применить»). Заданий: ' + fixed + '.');
+            } catch (e) {}
+        }
+        return fixed;
     };
 
     // #4440: ЛОКАЛЬНОЕ улучшение порядка — перестановка ВНУТРИ дня, без смены дня и станка.
