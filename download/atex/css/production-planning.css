@@ -1192,7 +1192,8 @@
 .atex-pp-plan-details-list { margin: 0; padding: 0; list-style: none; max-height: min(46vh, 420px); overflow: auto; }
 .atex-pp-plan-details-item {
     display: grid;
-    grid-template-columns: 92px minmax(110px, 1fr) 190px minmax(200px, 2fr);
+    /* #4444: колонка станка (номер закладки) — между сырьём и временем старта. */
+    grid-template-columns: 92px minmax(110px, 1fr) 96px 190px minmax(180px, 2fr);
     gap: 12px;
     align-items: baseline;
     padding: 5px 0;
@@ -1203,11 +1204,17 @@
 .atex-pp-plan-details-item.is-deleted { opacity: .75; }
 .atex-pp-plan-details-item.is-deleted .atex-pp-plan-details-label { text-decoration: line-through; }
 .atex-pp-plan-details-label { font-weight: 600; }
+/* #4444: станок показываем НОМЕРОМ ЗАКЛАДКИ («станок 3» / «станок 3 → 5»), а не именем: оператор
+   переключается по вкладкам, имя станка на этом экране ничего не подсказывает. Смену станка
+   выделяем — это самое заметное изменение в плане. */
+.atex-pp-plan-details-station { white-space: nowrap; opacity: .85; }
+.atex-pp-plan-details-station.is-changed { opacity: 1; font-weight: 600; color: var(--pp-attn-text, #b45309); }
 .atex-pp-plan-details-when { white-space: nowrap; }
 .atex-pp-plan-details-what { opacity: .85; }
 @media (max-width: 860px) {
     .atex-pp-plan-details-item { grid-template-columns: 1fr; gap: 2px; }
     .atex-pp-plan-details-when { white-space: normal; }
+    .atex-pp-plan-details-station { white-space: normal; }
 }
 .atex-pp-timing-dialog { max-width: 640px; }
 .atex-pp-timing-body {

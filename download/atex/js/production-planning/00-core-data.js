@@ -620,6 +620,27 @@
         return tabs;
     }
 
+    // #4444: карта slitterId → ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ станка (1..N) — ровно в том порядке, в
+    // котором вкладки рисует mergeStationTabs: сперва справочник «Слиттер» (this.slitters), затем
+    // станки, которых в справочнике нет, но задания на них есть. Оператор ориентируется по НОМЕРУ
+    // закладки, а не по имени станка («в таблице по кнопке Детали надо показывать смену станка —
+    // порядковый номер закладки, не имя», issue #4444), поэтому номер считаем ровно как вкладки.
+    // Чистая — покрыта тестом. → { slitterId: number }.
+    function slitterTabIndexMap(slitters, cuts) {
+        var out = {}, n = 0;
+        (slitters || []).forEach(function(s) {
+            var k = String(s && s.id == null ? '' : s.id);
+            if (k === '' || out[k] != null) return;
+            out[k] = ++n;
+        });
+        (cuts || []).forEach(function(c) {
+            var k = String((c && c.slitter && c.slitter.id) == null ? '' : c.slitter.id);
+            if (k === '' || out[k] != null) return;
+            out[k] = ++n;
+        });
+        return out;
+    }
+
     // Фильтр очереди по слиттеру и статусу (пустой фильтр = «все»).
     function filterCuts(cuts, filters) {
         var f = filters || {};
@@ -1524,11 +1545,18 @@
     function planChangeRows(snapshot, projected, timingUpdates, opts) {
         var options = opts || {};
         var slitterById = options.slitterById || {};
+        // #4444: номер ЗАКЛАДКИ станка — то, чем оператор оперирует на экране.
+        var tabIndexById = options.tabIndexById || {};
         function slitterLabel(sid) {
             var k = String(sid == null ? '' : sid);
             if (k === '') return '—';
             var s = slitterById[k];
             return (s && (s.label || s.name)) || ('#' + k);
+        }
+        function slitterTab(sid) {
+            var k = String(sid == null ? '' : sid);
+            var n = k === '' ? null : tabIndexById[k];
+            return (n == null) ? null : Number(n);
         }
         function cutLabel(c) {
             var mat = (c && c.materialName) || (c && c.materialId ? ('#' + c.materialId) : '') || '—';
@@ -1577,6 +1605,7 @@
                 created.push({ kind: 'new', cutId: id, label: cutLabel(c),
                     whenFrom: '—', whenTo: formatPlanStamp(startTs(c)), startTs: startTs(c),
                     slitterFrom: '—', slitterTo: slitterLabel(sidOf(c)),
+                    slitterTabFrom: null, slitterTabTo: slitterTab(sidOf(c)),
                     startChanged: true, slitterChanged: false, timingChanged: false, timing: [],
                     parentCutId: String(c.firstPartId == null ? '' : c.firstPartId), runs: Number(c.plannedRuns) || 0 });
                 return;
@@ -1588,6 +1617,7 @@
             moved.push({ kind: 'moved', cutId: id, label: cutLabel(c),
                 whenFrom: formatPlanStamp(startTs(was)), whenTo: formatPlanStamp(startTs(c)), startTs: startTs(c),
                 slitterFrom: slitterLabel(sidOf(was)), slitterTo: slitterLabel(sidOf(c)),
+                slitterTabFrom: slitterTab(sidOf(was)), slitterTabTo: slitterTab(sidOf(c)),
                 startChanged: startChanged, slitterChanged: slitterChanged,
                 timingChanged: !!timing.length, timing: timing, parentCutId: '' });
         });
@@ -1596,6 +1626,7 @@
             deleted.push({ kind: 'deleted', cutId: String(c.id), label: cutLabel(c),
                 whenFrom: formatPlanStamp(startTs(c)), whenTo: '—', startTs: startTs(c),
                 slitterFrom: slitterLabel(sidOf(c)), slitterTo: '—',
+                slitterTabFrom: slitterTab(sidOf(c)), slitterTabTo: null,
                 startChanged: false, slitterChanged: false, timingChanged: false, timing: [], parentCutId: '' });
         });
         function byTime(a, b) { return a.startTs - b.startTs; }

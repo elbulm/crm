@@ -621,6 +621,27 @@
         return tabs;
     }
 
+    // #4444: карта slitterId → ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ станка (1..N) — ровно в том порядке, в
+    // котором вкладки рисует mergeStationTabs: сперва справочник «Слиттер» (this.slitters), затем
+    // станки, которых в справочнике нет, но задания на них есть. Оператор ориентируется по НОМЕРУ
+    // закладки, а не по имени станка («в таблице по кнопке Детали надо показывать смену станка —
+    // порядковый номер закладки, не имя», issue #4444), поэтому номер считаем ровно как вкладки.
+    // Чистая — покрыта тестом. → { slitterId: number }.
+    function slitterTabIndexMap(slitters, cuts) {
+        var out = {}, n = 0;
+        (slitters || []).forEach(function(s) {
+            var k = String(s && s.id == null ? '' : s.id);
+            if (k === '' || out[k] != null) return;
+            out[k] = ++n;
+        });
+        (cuts || []).forEach(function(c) {
+            var k = String((c && c.slitter && c.slitter.id) == null ? '' : c.slitter.id);
+            if (k === '' || out[k] != null) return;
+            out[k] = ++n;
+        });
+        return out;
+    }
+
     // Фильтр очереди по слиттеру и статусу (пустой фильтр = «все»).
     function filterCuts(cuts, filters) {
         var f = filters || {};
@@ -1525,11 +1546,18 @@
     function planChangeRows(snapshot, projected, timingUpdates, opts) {
         var options = opts || {};
         var slitterById = options.slitterById || {};
+        // #4444: номер ЗАКЛАДКИ станка — то, чем оператор оперирует на экране.
+        var tabIndexById = options.tabIndexById || {};
         function slitterLabel(sid) {
             var k = String(sid == null ? '' : sid);
             if (k === '') return '—';
             var s = slitterById[k];
             return (s && (s.label || s.name)) || ('#' + k);
+        }
+        function slitterTab(sid) {
+            var k = String(sid == null ? '' : sid);
+            var n = k === '' ? null : tabIndexById[k];
+            return (n == null) ? null : Number(n);
         }
         function cutLabel(c) {
             var mat = (c && c.materialName) || (c && c.materialId ? ('#' + c.materialId) : '') || '—';
@@ -1578,6 +1606,7 @@
                 created.push({ kind: 'new', cutId: id, label: cutLabel(c),
                     whenFrom: '—', whenTo: formatPlanStamp(startTs(c)), startTs: startTs(c),
                     slitterFrom: '—', slitterTo: slitterLabel(sidOf(c)),
+                    slitterTabFrom: null, slitterTabTo: slitterTab(sidOf(c)),
                     startChanged: true, slitterChanged: false, timingChanged: false, timing: [],
                     parentCutId: String(c.firstPartId == null ? '' : c.firstPartId), runs: Number(c.plannedRuns) || 0 });
                 return;
@@ -1589,6 +1618,7 @@
             moved.push({ kind: 'moved', cutId: id, label: cutLabel(c),
                 whenFrom: formatPlanStamp(startTs(was)), whenTo: formatPlanStamp(startTs(c)), startTs: startTs(c),
                 slitterFrom: slitterLabel(sidOf(was)), slitterTo: slitterLabel(sidOf(c)),
+                slitterTabFrom: slitterTab(sidOf(was)), slitterTabTo: slitterTab(sidOf(c)),
                 startChanged: startChanged, slitterChanged: slitterChanged,
                 timingChanged: !!timing.length, timing: timing, parentCutId: '' });
         });
@@ -1597,6 +1627,7 @@
             deleted.push({ kind: 'deleted', cutId: String(c.id), label: cutLabel(c),
                 whenFrom: formatPlanStamp(startTs(c)), whenTo: '—', startTs: startTs(c),
                 slitterFrom: slitterLabel(sidOf(c)), slitterTo: '—',
+                slitterTabFrom: slitterTab(sidOf(c)), slitterTabTo: null,
                 startChanged: false, slitterChanged: false, timingChanged: false, timing: [], parentCutId: '' });
         });
         function byTime(a, b) { return a.startTs - b.startTs; }
@@ -9950,6 +9981,8 @@
         clonePlanningCut: clonePlanningCut,     // #4402
         projectPlanOnCuts: projectPlanOnCuts,   // #4402: проекция плана «Упорядочить» на очередь (предпросмотр без записи)
         planChangeRows: planChangeRows,         // #4417: что поменялось у каждого задания (модалка «Детали» + пометка карточек)
+        slitterTabIndexMap: slitterTabIndexMap, // #4444: станок → порядковый номер закладки
+        planChangeStation: planChangeStation,   // #4444: колонка «станок» списка «Деталей» (3 или 3 → 5)
         planChangeSummary: planChangeSummary,   // #4417: короткая подпись изменения («старт · станок · тайминг»)
         formatPlanStamp: formatPlanStamp,       // #4409/#4417: unix-секунды → «ДД.ММ ЧЧ:ММ»
         isPreviewCutId: isPreviewCutId,         // #4402
@@ -12806,6 +12839,16 @@
         // Колонки наладки проекции — в памяти (без записи). updates несут прежние значения (was*),
         // из них #4417 берёт изменения ТАЙМИНГА: их не видно по planStart, но применение их запишет.
         var setupRes = this.computeCutSetupUpdates(null);
+        // #4444: ПОКАЗЫВАЕМ РОВНО ТО, ЧТО ЗАПИШЕТСЯ. «Дату план» считает упаковщик, а колонки
+        // наладки — computeCutSetupUpdates; расхождение этих двух расчётов рисуется на карточках
+        // дырами и наложениями («если одно задание заканчивается в 14:38, я ожидаю увидеть другое,
+        // начинающееся в это же время, а времена вообще никакие не совпадают — как проверять?») и
+        // уводит последнее задание за конец смены (17:52 при потолке 16:40), хотя сумма минут дня в
+        // норме. Записываемый план мы уже сводим встык (#4438, reconcilePlanStarts) — значит и
+        // ПОКАЗЫВАТЬ надо сведённый, иначе предпросмотр показывает то, чего никогда не будет.
+        // Сводим ПРОЕКЦИЮ и тем же сдвигом правим ops, чтобы «Применить» записал ровно показанное.
+        var stitched = this.reconcilePreviewStarts(pend.ops);
+        if (stitched) setupRes = this.computeCutSetupUpdates(null);   // порядок в дне не менялся, но колонки перечитываем от новых стартов
         pend.after = this.computeQualityStats(scopeFromKey, scopeToKey);
         pend.snapshot = snapshot;
         pend.createdIds = projected.createdIds;
@@ -12813,7 +12856,11 @@
         pend.movedCount = projected.changedIds.length;
         // #4417: разбор «что у кого поменялось» — для модалки «Детали» и пометки карточек в очереди.
         // Считаем ПОСЛЕ пересчёта колонок наладки: тайминг проекции к этому моменту уже в памяти.
-        var changes = planChangeRows(snapshot, projected.cuts, setupRes.updates, { slitterById: slitterById });
+        var changes = planChangeRows(snapshot, projected.cuts, setupRes.updates,
+            { slitterById: slitterById,
+              // #4444: номер ЗАКЛАДКИ станка — им оператор и оперирует (имя станка ничего не говорит
+              // о том, куда переключаться). Считаем по тем же данным, что рисуют вкладки.
+              tabIndexById: slitterTabIndexMap(this.slitters, snapshot.concat(projected.cuts)) });
         pend.changes = changes;
         projected.cuts.forEach(function(c) {
             var row = changes.byId[String(c.id)];
@@ -17729,6 +17776,54 @@
         });
     };
 
+    // #4444: свести СТАРТЫ ПРОЕКЦИИ предпросмотра встык — тем же расчётом, что «↻ Пересчитать
+    // наладку» и сводка после записи (#4438). Работает по this.cuts (это уже проекция плана) и
+    // правит ДВЕ вещи разом:
+    //   • сами резки проекции — их и рисуют карточки, поэтому конец одного задания совпадает с
+    //     началом следующего, а день заканчивается там, где велит сумма минут;
+    //   • ops — то, что запишет «Применить»: показанное и записываемое обязаны совпадать.
+    // Синтетические сегменты дробления (id `preview:N`) записи не имеют — им правим соответствующую
+    // строку ops.creates (порядок в projectPlanOnCuts тот же). Замороженные дни не трогаются
+    // (recalcScopeCutIds их отсекает, #4436). → число сведённых заданий.
+    AtexProductionPlanning.prototype.reconcilePreviewStarts = function(ops) {
+        var self = this;
+        if (!(this.cuts && this.cuts.length)) return 0;
+        var byId = {};
+        this.cuts.forEach(function(c) { if (c && c.id != null) byId[String(c.id)] = c; });
+        var updateByCut = {};
+        ((ops && ops.updates) || []).forEach(function(u) { if (u) updateByCut[String(u.cutId)] = u; });
+        var creates = (ops && ops.creates) || [];
+        var fixed = 0;
+        (this.slitters || []).forEach(function(s) {
+            var sid = String(s && s.id == null ? '' : s.id);
+            if (sid === '') return;
+            self.recalcStartUpdates(sid).forEach(function(u) {
+                var c = byId[String(u.cutId)];
+                if (!c) return;
+                c.planDate = String(u.ts);
+                c.number = String(u.ts);
+                fixed++;
+                if (isPreviewCutId(u.cutId)) {
+                    // `preview:N` → N-я строка ops.creates (projectPlanOnCuts нумерует их по порядку).
+                    var n = Number(String(u.cutId).slice(String(u.cutId).indexOf(':') + 1));
+                    if (creates[n - 1]) creates[n - 1].planStartTs = u.ts;
+                    return;
+                }
+                if (updateByCut[String(u.cutId)]) updateByCut[String(u.cutId)].planStartTs = u.ts;
+                else if (ops && ops.updates) {
+                    ops.updates.push({ cutId: String(u.cutId), planStartTs: u.ts, plannedRuns: c.plannedRuns });
+                }
+            });
+        });
+        if (fixed) {
+            try {
+                console.warn('[pp] ⚠️ #4444: план упаковщика разошёлся с хранимой наладкой — предпросмотр '
+                    + 'показан СВЕДЁННЫМ встык (столько же запишет «Применить»). Заданий: ' + fixed + '.');
+            } catch (e) {}
+        }
+        return fixed;
+    };
+
     // #4440: ЛОКАЛЬНОЕ улучшение порядка — перестановка ВНУТРИ дня, без смены дня и станка.
     //
     // «Упорядочить» строит два ГЛОБАЛЬНЫХ кандидата (B — порядок/дни на текущих станках, A — со
@@ -18178,15 +18273,31 @@
         }
         if (row.kind === 'deleted') return 'Запись удаляется по «Применить» · старт был ' + row.whenFrom;
         if (row.startChanged) parts.push('старт ' + row.whenFrom + ' → ' + row.whenTo);
-        if (row.slitterChanged) parts.push('станок ' + row.slitterFrom + ' → ' + row.slitterTo);
+        // #4444: станок — номером ЗАКЛАДКИ (имя на этом экране ничего не подсказывает).
+        if (row.slitterChanged) parts.push('станок ' + planChangeStation(row));
         (row.timing || []).forEach(function(t) {
             parts.push(t.label + ' ' + (t.from == null ? '—' : t.from) + ' → ' + t.to + ' мин');
         });
         return parts.length ? ('Изменится: ' + parts.join(' · ')) : '';
     }
 
+    // #4444: колонка «станок» списка «Деталей» — ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ, а не имя станка:
+    // «3 → 5», если станок сменился, и просто «3», если нет. Имя («Станок 2», «MW-1100») оператору
+    // на этом экране не помогает — переключается он по вкладкам, поэтому и в разборе плана нужен
+    // номер вкладки. Номер неизвестен (станка нет ни в справочнике, ни в очереди) → «—». Чистая.
+    function planChangeStation(row) {
+        if (!row) return '—';
+        var from = row.slitterTabFrom, to = row.slitterTabTo;
+        if (row.kind === 'new') return to == null ? '—' : String(to);
+        if (row.kind === 'deleted') return from == null ? '—' : String(from);
+        if (from == null && to == null) return '—';
+        if (from == null || to == null || from === to) return String(from == null ? to : from);
+        return from + ' → ' + to;
+    }
+
     // #4417: то же «было → стало», но БЕЗ времени старта — для списка «Деталей», где старт стоит
-    // отдельной колонкой (иначе одно и то же читалось бы дважды). Чистая.
+    // отдельной колонкой (иначе одно и то же читалось бы дважды). #4444: станок тоже вынесен в свою
+    // колонку (номером закладки), поэтому и он отсюда убран. Чистая.
     function planChangeRest(row) {
         if (!row) return '';
         if (row.kind === 'new') {
@@ -18195,11 +18306,10 @@
         }
         if (row.kind === 'deleted') return 'запись удаляется по «Применить»';
         var parts = [];
-        if (row.slitterChanged) parts.push('станок ' + row.slitterFrom + ' → ' + row.slitterTo);
         (row.timing || []).forEach(function(t) {
             parts.push(t.label + ' ' + (t.from == null ? '—' : t.from) + ' → ' + t.to + ' мин');
         });
-        return parts.join(' · ') || 'только время старта';
+        return parts.join(' · ') || (row.slitterChanged ? 'только станок' : 'только время старта');
     }
 
     // #4417: «Детали» — модалка со ВСЕМИ изменёнными заданиями непринятого плана. Панель даёт
@@ -18261,6 +18371,13 @@
             listEl.appendChild(el('li', { class: 'atex-pp-plan-details-item is-' + kind }, [
                 idNode,
                 el('span', { class: 'atex-pp-plan-details-label', text: r.label }),
+                // #4444: станок — ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ, всегда (даже если не менялся): без него
+                // из списка не понять, на какой вкладке искать задание.
+                el('span', { class: 'atex-pp-plan-details-station' + (r.slitterChanged ? ' is-changed' : ''),
+                    title: r.slitterChanged
+                        ? ('Станок сменился: ' + r.slitterFrom + ' → ' + r.slitterTo + ' (номера закладок)')
+                        : ('Станок: ' + (r.kind === 'deleted' ? r.slitterFrom : r.slitterTo) + ' (номер закладки)'),
+                    text: 'станок ' + planChangeStation(r) }),
                 el('span', { class: 'atex-pp-plan-details-when',
                     text: (kind === 'new') ? ('старт ' + r.whenTo)
                         : (kind === 'deleted') ? ('был ' + r.whenFrom)
