@@ -148,13 +148,16 @@ var SLITTERS = { '101': { id: '101', label: 'Станок 101' }, '202': { id: '
 
 // ── 2) Подписи ──────────────────────────────────────────────────────────────
 (function () {
+    // #4444: станок в подписях — ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ (slitterTabFrom/To), а не имя: оператор
+    // переключается по вкладкам, и «Станок 101 → Станок 202» ему не подсказывает, куда смотреть.
     var moved = { kind: 'moved', cutId: '11', label: 'MW308 OUT', whenFrom: '27.07 08:00', whenTo: '28.07 08:00',
-        slitterFrom: 'Станок 101', slitterTo: 'Станок 202', startChanged: true, slitterChanged: true,
+        slitterFrom: 'Станок 101', slitterTo: 'Станок 202', slitterTabFrom: 1, slitterTabTo: 2,
+        startChanged: true, slitterChanged: true,
         timingChanged: true, timing: [{ key: 'knife', label: 'наладка ножей', from: null, to: 45 }] };
     assertEqual(planning.planChangeSummary(moved), 'старт · станок · тайминг', 'бейдж перечисляет, что поменялось');
     assertEqual(planning.planChangeTitle(moved),
-        'Изменится: старт 27.07 08:00 → 28.07 08:00 · станок Станок 101 → Станок 202 · наладка ножей — → 45 мин',
-        'подсказка карточки — полное «было → стало»');
+        'Изменится: старт 27.07 08:00 → 28.07 08:00 · станок 1 → 2 · наладка ножей — → 45 мин',
+        'подсказка карточки — полное «было → стало» (станок — номером закладки, #4444)');
     assertEqual(planning.planChangeSummary({ kind: 'new' }), 'новое', 'новый сегмент подписан «новое»');
     assertEqual(planning.planChangeSummary({ kind: 'deleted' }), 'удаляется', 'удаляемая запись подписана');
     assert(/Новый сегмент разбиения/.test(planning.planChangeTitle(

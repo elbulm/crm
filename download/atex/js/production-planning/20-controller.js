@@ -29,6 +29,8 @@
         clonePlanningCut: clonePlanningCut,     // #4402
         projectPlanOnCuts: projectPlanOnCuts,   // #4402: проекция плана «Упорядочить» на очередь (предпросмотр без записи)
         planChangeRows: planChangeRows,         // #4417: что поменялось у каждого задания (модалка «Детали» + пометка карточек)
+        slitterTabIndexMap: slitterTabIndexMap, // #4444: станок → порядковый номер закладки
+        planChangeStation: planChangeStation,   // #4444: колонка «станок» списка «Деталей» (3 или 3 → 5)
         planChangeSummary: planChangeSummary,   // #4417: короткая подпись изменения («старт · станок · тайминг»)
         formatPlanStamp: formatPlanStamp,       // #4409/#4417: unix-секунды → «ДД.ММ ЧЧ:ММ»
         isPreviewCutId: isPreviewCutId,         // #4402
@@ -2892,7 +2894,11 @@
         pend.movedCount = projected.changedIds.length;
         // #4417: разбор «что у кого поменялось» — для модалки «Детали» и пометки карточек в очереди.
         // Считаем ПОСЛЕ пересчёта колонок наладки: тайминг проекции к этому моменту уже в памяти.
-        var changes = planChangeRows(snapshot, projected.cuts, setupRes.updates, { slitterById: slitterById });
+        var changes = planChangeRows(snapshot, projected.cuts, setupRes.updates,
+            { slitterById: slitterById,
+              // #4444: номер ЗАКЛАДКИ станка — им оператор и оперирует (имя станка ничего не говорит
+              // о том, куда переключаться). Считаем по тем же данным, что рисуют вкладки.
+              tabIndexById: slitterTabIndexMap(this.slitters, snapshot.concat(projected.cuts)) });
         pend.changes = changes;
         projected.cuts.forEach(function(c) {
             var row = changes.byId[String(c.id)];
@@ -8257,15 +8263,31 @@
         }
         if (row.kind === 'deleted') return 'Запись удаляется по «Применить» · старт был ' + row.whenFrom;
         if (row.startChanged) parts.push('старт ' + row.whenFrom + ' → ' + row.whenTo);
-        if (row.slitterChanged) parts.push('станок ' + row.slitterFrom + ' → ' + row.slitterTo);
+        // #4444: станок — номером ЗАКЛАДКИ (имя на этом экране ничего не подсказывает).
+        if (row.slitterChanged) parts.push('станок ' + planChangeStation(row));
         (row.timing || []).forEach(function(t) {
             parts.push(t.label + ' ' + (t.from == null ? '—' : t.from) + ' → ' + t.to + ' мин');
         });
         return parts.length ? ('Изменится: ' + parts.join(' · ')) : '';
     }
 
+    // #4444: колонка «станок» списка «Деталей» — ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ, а не имя станка:
+    // «3 → 5», если станок сменился, и просто «3», если нет. Имя («Станок 2», «MW-1100») оператору
+    // на этом экране не помогает — переключается он по вкладкам, поэтому и в разборе плана нужен
+    // номер вкладки. Номер неизвестен (станка нет ни в справочнике, ни в очереди) → «—». Чистая.
+    function planChangeStation(row) {
+        if (!row) return '—';
+        var from = row.slitterTabFrom, to = row.slitterTabTo;
+        if (row.kind === 'new') return to == null ? '—' : String(to);
+        if (row.kind === 'deleted') return from == null ? '—' : String(from);
+        if (from == null && to == null) return '—';
+        if (from == null || to == null || from === to) return String(from == null ? to : from);
+        return from + ' → ' + to;
+    }
+
     // #4417: то же «было → стало», но БЕЗ времени старта — для списка «Деталей», где старт стоит
-    // отдельной колонкой (иначе одно и то же читалось бы дважды). Чистая.
+    // отдельной колонкой (иначе одно и то же читалось бы дважды). #4444: станок тоже вынесен в свою
+    // колонку (номером закладки), поэтому и он отсюда убран. Чистая.
     function planChangeRest(row) {
         if (!row) return '';
         if (row.kind === 'new') {
@@ -8274,11 +8296,10 @@
         }
         if (row.kind === 'deleted') return 'запись удаляется по «Применить»';
         var parts = [];
-        if (row.slitterChanged) parts.push('станок ' + row.slitterFrom + ' → ' + row.slitterTo);
         (row.timing || []).forEach(function(t) {
             parts.push(t.label + ' ' + (t.from == null ? '—' : t.from) + ' → ' + t.to + ' мин');
         });
-        return parts.join(' · ') || 'только время старта';
+        return parts.join(' · ') || (row.slitterChanged ? 'только станок' : 'только время старта');
     }
 
     // #4417: «Детали» — модалка со ВСЕМИ изменёнными заданиями непринятого плана. Панель даёт
@@ -8340,6 +8361,13 @@
             listEl.appendChild(el('li', { class: 'atex-pp-plan-details-item is-' + kind }, [
                 idNode,
                 el('span', { class: 'atex-pp-plan-details-label', text: r.label }),
+                // #4444: станок — ПОРЯДКОВЫЙ НОМЕР ЗАКЛАДКИ, всегда (даже если не менялся): без него
+                // из списка не понять, на какой вкладке искать задание.
+                el('span', { class: 'atex-pp-plan-details-station' + (r.slitterChanged ? ' is-changed' : ''),
+                    title: r.slitterChanged
+                        ? ('Станок сменился: ' + r.slitterFrom + ' → ' + r.slitterTo + ' (номера закладок)')
+                        : ('Станок: ' + (r.kind === 'deleted' ? r.slitterFrom : r.slitterTo) + ' (номер закладки)'),
+                    text: 'станок ' + planChangeStation(r) }),
                 el('span', { class: 'atex-pp-plan-details-when',
                     text: (kind === 'new') ? ('старт ' + r.whenTo)
                         : (kind === 'deleted') ? ('был ' + r.whenFrom)
