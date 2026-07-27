@@ -6344,6 +6344,36 @@
         return out;
     }
 
+    // #4436: id ВСЕХ записей заданий, стоящих в ЗАМОРОЖЕННЫХ днях. «Заморозка» (#4326) означает
+    // «планирование этот день НЕ ТРОГАЕТ» — буквально: ни «Дату план» (время внутри дня), ни
+    // хранимый тайминг. Прежний Вариант A держал такие задания ВО ВХОДЕ планировщика, лишь пришпилив
+    // их к дню (`c.fixed`), и упаковщик заново раскладывал день встык: время заданий менялось, записи
+    // уходили в базу — «зачем залез в замороженный день что-то менять?» (issue #4436). Теперь
+    // замороженный день исключается из входа целиком, а занятое им время отдаётся станку простоем
+    // (`excludedCutBlockedRanges`), чтобы соседние дни считались по честной ёмкости и ничто не
+    // встало поверх (issue #4436: «да ещё поставил 2 задания на 8 утра»).
+    //
+    // Исключаем ЦЕЛУЮ цепочку дробления, если хоть одно её звено стои́т в замороженном дне: для
+    // планировщика цепочка — ОДНО логическое задание (mergeContinuationChains), пере-планировать её
+    // «частично» нельзя — он всё равно пере-нарезал бы сегменты и сдвинул замороженное звено.
+    // isFrozenDay(planDate) — предикат контроллера (`dayIsFrozen`). Вход не мутирует. → массив id.
+    function frozenDayCutIds(cuts, isFrozenDay) {
+        if (typeof isFrozenDay !== 'function') return [];
+        var chains = (mergeContinuationChains(cuts || []).chainByLogical) || {};
+        var byId = {};
+        (cuts || []).forEach(function(c){ if (c && c.id != null) byId[String(c.id)] = c; });
+        var out = [];
+        Object.keys(chains).forEach(function(head){
+            var members = chains[head] || [head];
+            var frozen = members.some(function(m){
+                var c = byId[String(m)];
+                return !!c && isFrozenDay(c.planDate);
+            });
+            if (frozen) members.forEach(function(m){ out.push(String(m)); });
+        });
+        return out;
+    }
+
     // #4300/#4312: заправка станков НА ВХОДЕ в окно планирования — конфигурация ПОСЛЕДНЕГО задания
     // станка, запланированного РАНЬШЕ базы «С». Станок к началу окна уже несёт наладку вчерашней резки
     // ПЛАНА (ножи/сырьё загружены и остаются на ночь). Без неё splitMachineQueue зарядил бы ПЕРВОЙ резке
@@ -9996,6 +10026,7 @@
         chainRecordIdsForCut: chainRecordIdsForCut,     // #4292: цепочка дробления (голова + продолжения) для удаления
         daySplitDetachCutId: daySplitDetachCutId,       // #4357: перенос сегмента — отвязать от цепочки
         cutsBeforeWindowToKeep: cutsBeforeWindowToKeep, // #4294: задания прошлых дней (раньше «С») — не пере-планировать
+        frozenDayCutIds: frozenDayCutIds,        // #4436: задания замороженных дней — планировщик их не трогает
         excludedCutBlockedRanges: excludedCutBlockedRanges, // #4434 п.2: время станка под исключённые из раскладки задания
         prevSetupBeforeWindow: prevSetupBeforeWindow,   // #4300/#4312: заправка станка из его последнего задания раньше «С» (нет дыры после первого задания)
         longVacationDayRanges: longVacationDayRanges,   // #4314: длинные окна «Отпуска» (дни от «С») — сбрасывают наладку
@@ -16334,6 +16365,10 @@
                 wantM += (deferMaterialToCont[String(c.id)] || 0);    // продолжение добирает смену сырья своих хвостов
                 var runsC = stripNum(c.plannedRuns);
                 if (!inScope) return;
+                // #4436: задание стои́т в ЗАМОРОЖЕННОМ дне — его хранимый тайминг НЕ ПЕРЕПИСЫВАЕМ.
+                // «Заморозка» значит «планирование этот день не трогает»: расчёт по очереди станка идёт
+                // сквозь такое задание (соседям нужен предшественник), но в набор ЗАПИСИ оно не входит.
+                if (typeof self.dayIsFrozen === 'function' && self.dayIsFrozen(c.planDate)) return;
                 // #3700: «Резка и Лидер» = «Длительность, минут» + лидер (BETWEEN_CUTS × число резок
                 // цуга, cutLeaderRuns). Зависит только от самой резки.
                 // #4021: setup-only сегмент (0 проходов — «только настройка станка», хвост дня #3635 п.5)
@@ -17425,17 +17460,22 @@
                 if (c && !c.fixed && pinSet[String(c.id)]) { c.fixed = true; pinnedRestore.push(c); }   // временный замок перенесённого
             });
         }
-        // #4326 (Вариант A): «замок дня» — ПИНим задания ЗАМОРОЖЕННЫХ дней на их день (временный c.fixed,
-        // как ручной перенос #4074): planCutOperations держит их день (dayAnchorByCut от «Даты план»),
-        // остальное раскладывает вокруг них. День НЕ блокируется наглухо — срочные задания по-прежнему
-        // могут туда встать, поэтому заморозка НЕ создаёт просрочку (#4338). Замороженные задания
-        // остаются во входе (fixed) → упаковщик их видит → наладка/ножи следующей резки считаются от них
-        // (не «фантомная переналадка», #4338). Замок снимаем в общем finally (pinnedRestore). Работает на
-        // всех путях (генерация/«Упорядочить»/↑↓/удаление/перенос). Пустая «Дата план» → dayIsFrozen=false.
+        // #4436: ЗАМОРОЖЕННЫЙ ДЕНЬ ПЛАНИРОВЩИК НЕ ТРОГАЕТ ВООБЩЕ. Прежний Вариант A (#4326) держал его
+        // задания во входе, лишь пришпиливая к дню (`c.fixed`), — и упаковщик каждый раз раскладывал
+        // день заново встык: «Дата план» заданий менялась и уходила в базу («зачем залез в замороженный
+        // день что-то менять?», issue #4436). Исключаем такие задания из входа ЦЕЛИКОМ (всю цепочку
+        // дробления, если хоть одно звено в замороженном дне), а занятое ими время отдаём станку
+        // простоем — блок ниже (excludedCutBlockedRanges) строится по ВСЕМУ, чего нет в planInput,
+        // поэтому день считается по честной ёмкости и ничто не встаёт поверх замороженных заданий.
+        // Хранимый тайминг им тоже не переписываем — computeCutSetupUpdates пропускает замороженные дни.
+        // Пустая «Дата план» → dayIsFrozen=false (новое задание в замороженный день не попадает).
         if (self.meta && self.meta.freeze && self.freezeByDay && Object.keys(self.freezeByDay).length) {
-            planInput.forEach(function(c){
-                if (c && !c.fixed && self.dayIsFrozen(c.planDate)) { c.fixed = true; pinnedRestore.push(c); }
-            });
+            var frozenIds = frozenDayCutIds(planInput, function(planDate){ return self.dayIsFrozen(planDate); });
+            if (frozenIds.length) {
+                var frozenSet = {};
+                frozenIds.forEach(function(id){ frozenSet[String(id)] = true; });
+                planInput = planInput.filter(function(c){ return !frozenSet[String(c && c.id)]; });
+            }
         }
         // #4381: НАЧАТЫЕ задания (заполнено «Начато») неприкосновенны и для пересборки — иначе
         // «Упорядочить»/перенос/«Урегулировать» уводили бы с их дня то, что уже идёт на станке.
@@ -17637,10 +17677,16 @@
         var toStr = String((this.filter && this.filter.dateTo) || '').trim();
         var fromKey = fromStr === '' ? null : planDateDayKey(fromStr);
         var toKey = toStr === '' ? null : planDateDayKey(toStr);
+        var self = this;
         return (this.cuts || []).filter(function(c) {
             if (!c) return false;
             var csid = c.slitter && c.slitter.id;
             if (String(csid == null ? '' : csid) !== sid) return false;
+            // #4436: замороженный день не трогает НИКАКОЙ пересчёт — ни автоматический, ни по кнопке.
+            // Кнопка «↻ Пересчитать наладку» тоже переписывает «Дату план» (#4408), а «Заморозка»
+            // означает «этот день не меняем». Починить раскладку замороженного дня можно, сняв замок
+            // (🔓), пересчитав и заморозив снова — это осознанное действие оператора, а не побочный эффект.
+            if (typeof self.dayIsFrozen === 'function' && self.dayIsFrozen(c.planDate)) return false;
             var dayKey = planDateDayKey(c.planDate);
             if (fromKey != null && (dayKey == null || dayKey < fromKey)) return false;
             if (toKey != null && (dayKey == null || dayKey > toKey)) return false;
