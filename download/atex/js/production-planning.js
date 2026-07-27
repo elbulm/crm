@@ -12568,6 +12568,31 @@
         // опозданий (срок §14), затем меньше переналадки; иначе не трогаем.
         var choice = chooseOptimizeCandidate(before, objB, objA, plan.changed);
         if (choice.action === 'none') {
+            // #4440: ни один ГЛОБАЛЬНЫЙ кандидат не лучше — но это не значит, что улучшать нечего.
+            // Пробуем ЛОКАЛЬНОЕ улучшение: перестановку ВНУТРИ дня на тех же станках и днях
+            // (intraDayImprovementOps). Она безопасна по построению — состав и номер дня, станок и
+            // сроки те же, меняется только порядок, — а выигрыш реальный (стенд ateh1: 150 мин
+            // переналадки на трёх станках, «выгодно поменять местами 3 и 4», issue #4440).
+            var local = self.intraDayImprovementOps();
+            if (local.updates.length) {
+                self.setBusy(false);
+                trace.choice = { action: 'C', title: 'перестановка внутри дней (дни и станки те же)' };
+                trace.stop = { code: 'local-intraday', text: 'глобальные кандидаты не лучше, но порядок ВНУТРИ дней улучшаем: '
+                    + 'переналадка −' + round3(local.gainMin) + ' мин, заданий ' + local.updates.length };
+                var localOps = { updates: local.updates, creates: [], deletes: [] };
+                self.fillOptimizeMovesTrace(trace, localOps, null);
+                self.startPlanPreview({
+                    ops: localOps,
+                    reassign: null,
+                    tailSetup: tailBefore,
+                    slitterChange: false,
+                    coBefore: round3(coBefore), coAfter: round3(coBefore - local.gainMin),
+                    lateBefore: round3(lateBefore), lateAfter: round3(lateBefore),   // дни не меняются
+                    downtimeBefore: dtBefore.length, downtimeAfter: dtBefore.length,
+                    trace: trace
+                });
+                return;
+            }
             self.setBusy(false);
             trace.choice = { action: 'none' };
             // #4413: задания стоят в окне «Отпуска», и переставить их не вышло — это старше просрочки
@@ -17660,6 +17685,93 @@
             self.notify('Ошибка перестановки: ' + (err && err.message || err), 'error');
             return false;
         });
+    };
+
+    // #4440: ЛОКАЛЬНОЕ улучшение порядка — перестановка ВНУТРИ дня, без смены дня и станка.
+    //
+    // «Упорядочить» строит два ГЛОБАЛЬНЫХ кандидата (B — порядок/дни на текущих станках, A — со
+    // сменой станка) и сравнивает их с текущим планом целиком. Если оба вышли хуже, кнопка не делает
+    // НИЧЕГО — и очевидно выгодная перестановка соседей внутри одного дня остаётся невыполненной
+    // (issue #4440: «выгодно поменять местами 3 и 4»; на стенде ateh1 станок 1279 28.07 стоял
+    // 15→15→8→15→8→18 ножей = четыре смены ножей вместо двух).
+    //
+    // Кандидат «внутри дня» безопасен по построению: состав дня, его номер и станок не меняются —
+    // меняется только ПОРЯДОК внутри дня, поэтому сроки (§8 п.4/5) и загрузка дней те же. Считает его
+    // тот же движок, что и при генерации, — `resequenceWithinDays` (#4139/#3996: цель —
+    // sencingCost с направленным штрафом за рост числа полос; двойная приёмка не даёт разменять
+    // цель на реальные минуты наладки).
+    //
+    // Возвращает { updates, gainByMachine, gainMin } — updates в том же формате, что кандидаты A/B
+    // (перестановка = переназначение уже занятых стартов дня новому порядку; точные минуты потом
+    // сведёт reconcilePlanStarts, #4438). Пусто → улучшать нечего.
+    AtexProductionPlanning.prototype.intraDayImprovementOps = function() {
+        var self = this;
+        var empty = { updates: [], gainByMachine: {}, gainMin: 0 };
+        if (!(this.cuts && this.cuts.length)) return empty;
+        var base = planBaseMidnightFrom(this.filter && this.filter.date, controllerNowMs(this));
+        if (!isFinite(base)) return empty;
+        var times = this.changeTimes;
+        var weights = makePlanningOptions(PLANNING_STRATEGY_SETUP, this.changeTimes, this.daySettings);
+        // Звено цепочки дробления, у которого есть продолжение на БОЛЕЕ ПОЗДНЕМ дне, обязано
+        // оставаться последним в своём дне (#3635 п.5) — это и есть spanningIds для перебора.
+        var chains = (mergeContinuationChains(this.cuts).chainByLogical) || {};
+        var dayKeyById = {};
+        this.cuts.forEach(function(c){ if (c && c.id != null) dayKeyById[String(c.id)] = planDateDayKey(c.planDate); });
+        var spanning = {};
+        Object.keys(chains).forEach(function(head){
+            var members = (chains[head] || [head]).map(String);
+            members.forEach(function(m){
+                var mine = dayKeyById[m];
+                if (mine == null) return;
+                if (members.some(function(o){ var d = dayKeyById[o]; return d != null && d > mine; })) spanning[m] = true;
+            });
+        });
+        var carryBy = prevSetupBeforeWindow(this.cuts, base);
+        var updates = [], gainByMachine = {}, gainMin = 0;
+        (this.slitters || []).forEach(function(s){
+            var sid = String(s && s.id == null ? '' : s.id);
+            if (sid === '') return;
+            var ordered = (self.cuts || []).filter(function(c){
+                if (!c || String(c.slitter && c.slitter.id) !== sid) return false;
+                if (String(c.status || '').trim() === 'Завершён') return false;
+                var ts = Number(c.planDate);
+                if (!isFinite(ts) || ts <= 0) return false;
+                if (Math.floor((ts * 1000 - base) / 86400000) < 0) return false;   // прошлые дни не трогаем (#4294)
+                if (typeof self.dayIsFrozen === 'function' && self.dayIsFrozen(c.planDate)) return false;   // #4436
+                if (cutIsStarted(c)) return false;                                  // #4381: начатое неприкосновенно
+                return true;
+            }).sort(function(a, b){ return Number(a.planDate) - Number(b.planDate); });
+            if (ordered.length < 2) return;
+            var dayByCut = {};
+            ordered.forEach(function(c){ dayByCut[String(c.id)] = Math.floor((Number(c.planDate) * 1000 - base) / 86400000); });
+            var carry = carryBy[sid];
+            var entry = carry ? carryOverPrevCut(carry, ordered[0]) : null;
+            var better = resequenceWithinDays(ordered, dayByCut, spanning, entry, times, weights);
+            if (!better || better.length !== ordered.length) return;
+            var wasReal = runChainCost(ordered, entry, times, changeoverCost);
+            var newReal = runChainCost(better, entry, times, changeoverCost);
+            var sameOrder = better.every(function(c, i){ return String(c.id) === String(ordered[i].id); });
+            if (sameOrder) return;
+            // Перестановка = переназначение УЖЕ занятых стартов дня новому порядку (как drag-drop
+            // #4306): день, состав дня и станок сохраняются, времена лишь меняют владельца.
+            var slotsByDay = {};
+            ordered.forEach(function(c){
+                var d = dayByCut[String(c.id)];
+                (slotsByDay[d] = slotsByDay[d] || []).push(Number(c.planDate));
+            });
+            Object.keys(slotsByDay).forEach(function(d){ slotsByDay[d].sort(function(a, b){ return a - b; }); });
+            var takenByDay = {};
+            better.forEach(function(c){
+                var d = dayByCut[String(c.id)];
+                var idx = takenByDay[d] = (takenByDay[d] == null ? 0 : takenByDay[d] + 1);
+                var ts = slotsByDay[d][idx];
+                if (ts == null || Number(c.planDate) === ts) return;
+                updates.push({ cutId: String(c.id), planStartTs: ts, plannedRuns: c.plannedRuns });
+            });
+            gainByMachine[sid] = round3(wasReal - newReal);
+            gainMin += round3(wasReal - newReal);
+        });
+        return { updates: updates, gainByMachine: gainByMachine, gainMin: round3(gainMin) };
     };
 
     // #4438: СВЕРКА ПЛАНА С ХРАНИМЫМ — сразу после того, как план записан. «Сгенерировать»/«Упорядочить»
