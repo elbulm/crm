@@ -2353,20 +2353,26 @@
         return m;
     }
 
-    // #4047/#4064/#4413: выбор кандидата «Упорядочить». before/objB/objA — КОМБИНИРОВАННЫЙ объектив
-    // (заданий_в_«Отпуске» × DOWNTIME_CONFLICT_WEIGHT + дни_опоздания × LATE_DAY_WEIGHT + переналадка),
-    // objA = Infinity если переназначения нет.
-    // Применяем ЛУЧШИЙ (строго меньший объектив = меньше невыполнимого, затем меньше опозданий, при
-    // равных — меньше переналадки);
-    // при равенстве кандидатов берём B (без смены станка). Лучший НЕ строго меньше текущего → 'none'
-    // (план не трогаем). Так «Упорядочить» НЕ увеличивает ни опоздания, ни (при равных опозданиях)
-    // переналадку, но РАДИ сокращения опозданий переналадку увеличить может (срок важнее, #4064).
-    // → { action:'none'|'B'|'A', obj }.
-    function chooseOptimizeCandidate(before, objB, objA, reassignChanged) {
-        var useA = !!reassignChanged && objA < objB;
-        var bestObj = useA ? objA : objB;
-        if (!(bestObj < before)) return { action: 'none', obj: before };
-        return { action: useA ? 'A' : 'B', obj: bestObj };
+    // #4047/#4064/#4413/#4440: выбор кандидата «Упорядочить». before/objC/objB/objA — КОМБИНИРОВАННЫЙ
+    // объектив (заданий_в_«Отпуске» × DOWNTIME_CONFLICT_WEIGHT + дни_опоздания × LATE_DAY_WEIGHT +
+    // переналадка). Кандидаты РАВНОПРАВНЫ — берём тот, чей объектив МЕНЬШЕ, без деления на
+    // «глобальный/локальный» (#4440):
+    //   C — перестановка ВНУТРИ дня (дни и станки те же), objC = Infinity, если переставлять нечего;
+    //   B — порядок/дни на текущих станках;
+    //   A — со сменой станка, objA = Infinity, если переназначения нет.
+    // При РАВНОМ объективе выигрывает менее «шумный» кандидат: C (ничего не переезжает) → B (станки
+    // на месте) → A. Лучший НЕ строго меньше текущего → 'none' (план не трогаем). Так «Упорядочить»
+    // НЕ увеличивает ни опоздания, ни (при равных опозданиях) переналадку, но РАДИ сокращения
+    // опозданий переналадку увеличить может (срок важнее, #4064).
+    // → { action:'none'|'C'|'B'|'A', obj }.
+    function chooseOptimizeCandidate(before, objB, objA, reassignChanged, objC) {
+        var ranked = [{ action: 'C', obj: Number(objC == null ? Infinity : objC) },
+                      { action: 'B', obj: Number(objB) }];
+        if (reassignChanged) ranked.push({ action: 'A', obj: Number(objA) });
+        var best = null;
+        ranked.forEach(function(c) { if (isFinite(c.obj) && (!best || c.obj < best.obj)) best = c; });
+        if (!best || !(best.obj < before)) return { action: 'none', obj: before };
+        return { action: best.action, obj: best.obj };
     }
 
     // #4409: сколько ПЕРЕМЕЩЕНИЙ печатать поимённо. Остаток не замалчиваем — пишем «…и ещё N».
@@ -2589,6 +2595,8 @@
         // для уведомления. combined() собирает объектив для chooseOptimizeCandidate.
         var before, builtB, objB, plan, objA, builtA;
         var coBefore, lateBefore, coB, lateB, coA = Infinity, lateA = Infinity;
+        // #4440: кандидат C — перестановка ВНУТРИ дня (дни и станки те же), равноправен с B и A.
+        var localC = { updates: [], gainMin: 0 }, objC = Infinity, coC = Infinity;
         // #4413: задания, стоящие в окне «Отпуска» станка, — старший критерий (см. DOWNTIME_CONFLICT_WEIGHT).
         var dtBefore = [], dtB = [], dtA = [];
         // #4402: решение упаковщика по хвостам ТЕКУЩЕГО плана — buildSequenceOps ниже его перепишет
@@ -2657,6 +2665,23 @@
                 trace.candidates.push({ key: 'A', title: 'со сменой станка',
                     skipped: 'переназначения станков нет (computeReassignmentPlan)' });
             }
+
+            // #4440: кандидат C — перестановка ВНУТРИ дня на текущих станках и днях. Считается тем же
+            // движком (resequenceWithinDays), но по ТЕКУЩЕМУ плану: состав дня, его номер и станок не
+            // меняются, поэтому опоздания и конфликты с «Отпуском» те же — меняется только переналадка.
+            // Кандидат равноправен с B и A: берём того, чей объектив меньше (issue #4440 — «какая
+            // разница глобальный/локальный, что выгоднее, то и берём»).
+            localC = self.intraDayImprovementOps();
+            objC = Infinity;
+            if (localC.updates.length && localC.gainMin > 0) {
+                coC = round3(coBefore - localC.gainMin);
+                objC = combined(dtBefore.length, lateBefore, coC);
+                trace.candidates.push({ key: 'C', title: 'перестановка внутри дней (дни и станки те же)',
+                    late: round3(lateBefore), changeover: coC, downtime: dtBefore.length });
+            } else {
+                trace.candidates.push({ key: 'C', title: 'перестановка внутри дней (дни и станки те же)',
+                    skipped: 'внутри дней переставлять нечего (порядок уже лучший)' });
+            }
         } catch (err) {
             self.setBusy(false);
             console.error('[pp] ⚙️ optimizeQueue: ОШИБКА расчёта', err && err.message, err && err.stack);
@@ -2667,34 +2692,27 @@
         }
 
         // Выбор кандидата: сперва меньше заданий в «Отпуске» (#4413 — невыполнимо), затем меньше
-        // опозданий (срок §14), затем меньше переналадки; иначе не трогаем.
-        var choice = chooseOptimizeCandidate(before, objB, objA, plan.changed);
+        // опозданий (срок §14), затем меньше переналадки; иначе не трогаем. #4440: кандидаты C/B/A
+        // равноправны — что выгоднее, то и берём.
+        var choice = chooseOptimizeCandidate(before, objB, objA, plan.changed, objC);
+        if (choice.action === 'C') {
+            self.setBusy(false);
+            trace.choice = { action: 'C', title: 'перестановка внутри дней (дни и станки те же)' };
+            var localOps = { updates: localC.updates, creates: [], deletes: [] };
+            self.fillOptimizeMovesTrace(trace, localOps, null);
+            self.startPlanPreview({
+                ops: localOps,
+                reassign: null,
+                tailSetup: tailBefore,
+                slitterChange: false,
+                coBefore: round3(coBefore), coAfter: coC,
+                lateBefore: round3(lateBefore), lateAfter: round3(lateBefore),   // дни не меняются
+                downtimeBefore: dtBefore.length, downtimeAfter: dtBefore.length,
+                trace: trace
+            });
+            return;
+        }
         if (choice.action === 'none') {
-            // #4440: ни один ГЛОБАЛЬНЫЙ кандидат не лучше — но это не значит, что улучшать нечего.
-            // Пробуем ЛОКАЛЬНОЕ улучшение: перестановку ВНУТРИ дня на тех же станках и днях
-            // (intraDayImprovementOps). Она безопасна по построению — состав и номер дня, станок и
-            // сроки те же, меняется только порядок, — а выигрыш реальный (стенд ateh1: 150 мин
-            // переналадки на трёх станках, «выгодно поменять местами 3 и 4», issue #4440).
-            var local = self.intraDayImprovementOps();
-            if (local.updates.length) {
-                self.setBusy(false);
-                trace.choice = { action: 'C', title: 'перестановка внутри дней (дни и станки те же)' };
-                trace.stop = { code: 'local-intraday', text: 'глобальные кандидаты не лучше, но порядок ВНУТРИ дней улучшаем: '
-                    + 'переналадка −' + round3(local.gainMin) + ' мин, заданий ' + local.updates.length };
-                var localOps = { updates: local.updates, creates: [], deletes: [] };
-                self.fillOptimizeMovesTrace(trace, localOps, null);
-                self.startPlanPreview({
-                    ops: localOps,
-                    reassign: null,
-                    tailSetup: tailBefore,
-                    slitterChange: false,
-                    coBefore: round3(coBefore), coAfter: round3(coBefore - local.gainMin),
-                    lateBefore: round3(lateBefore), lateAfter: round3(lateBefore),   // дни не меняются
-                    downtimeBefore: dtBefore.length, downtimeAfter: dtBefore.length,
-                    trace: trace
-                });
-                return;
-            }
             self.setBusy(false);
             trace.choice = { action: 'none' };
             // #4413: задания стоят в окне «Отпуска», и переставить их не вышло — это старше просрочки
