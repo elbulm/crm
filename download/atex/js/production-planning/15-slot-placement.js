@@ -141,6 +141,36 @@
         if (prevCut && nextCut && ordersOverlap(prevCut.orderIds, nextCut.orderIds)) return w;   // штраф: разрывает чужой заказ
         return 0;
     }
+    // #4454 (ТЗ §8.2, числа §14): ШТРАФ ЗА РАЗБИЕНИЕ ПОСЛЕДОВАТЕЛЬНОСТИ. Планировщик ставит подряд
+    // одинаковые комбинации ножей и одно сырьё, чтобы не платить переналадку. Вклиниться в такую
+    // цепочку значит создать ДВЕ переналадки с нуля там, где не было ни одной.
+    //
+    // ПОЧЕМУ ОТДЕЛЬНЫМ ВЕСОМ, А НЕ «САМО ПОСЧИТАЕТСЯ». Стоимость вставки — сумма ДВУХ переходов
+    // prev→slot и slot→next (`insertionCost`), и стоимость РАЗРУШЕННОГО перехода prev→next она не
+    // возвращает. Поэтому позиция внутри однородной цепочки и позиция в уже существующем шве
+    // получают ОДИНАКОВЫЙ вес, когда вставляемое задание чужое обоим:
+    //     внутрь цепочки (prev≡next): (K+M) + (K+M), реально +2 переналадки;
+    //     в шов (prev≠next):          (K+M) + (K+M), реально +1 (шов уже оплачен).
+    // Ничью решает betterCand (качество/день/индекс) — и задание садится в середину цепочки, в том
+    // числе на стыке дней (issue #4454). Разрыв обязан стоить дороже явно.
+    //
+    // Начисляем ТОЛЬКО между двумя РЕАЛЬНЫМИ соседями: «последовательность» — это два стоящих рядом
+    // задания, которым переналадка друг относительно друга не нужна. Синтетический prev (заправка
+    // станка, #4288) сюда не годится — у него нейтрализованы партия/лидер, сравнение было бы
+    // выдуманным. Веса из «Настройки» 269; 0 выключает штраф.
+    function breakSequencePenalty(prevCut, slot, nextCut, settings){
+        if (!prevCut || !nextCut || !slot) return { knives: 0, material: 0 };
+        var out = { knives: 0, material: 0 };
+        // Ножи: prev и next — одна комбинация, а слот её меняет.
+        if (!knifeChangeNeeded(prevCut, nextCut) && knifeChangeNeeded(prevCut, slot)){
+            out.knives = planWeight(settings, 'BREAK_KNIVES_COST_MN') || 0;
+        }
+        // Сырьё/намотка/партия: prev и next режут один рулон, а слот встаёт между ними чужим.
+        if (!materialChangeNeeded(prevCut, nextCut) && materialChangeNeeded(prevCut, slot)){
+            out.material = planWeight(settings, 'BREAK_MATERIAL_COST_MN') || 0;
+        }
+        return out;
+    }
     function scorePosition(machineSlots, index, slot, ctx){
         ctx = ctx || {};
         if (!canInsertAt(machineSlots, index)) return null;
@@ -209,7 +239,15 @@
         // #4194: штраф/бонус смежности заказа — в ВЕС (не в setupWeight: гейт §8.4-фолбэка по setup не трогаем).
         var orderPenalty = orderAdjacencyPenalty(prevCut, slot, nextCut, ctx.settings);
         if (orderPenalty) byFactor.order = round3((byFactor.order || 0) + orderPenalty);
-        return { weight: round3(cost.weight + orderPenalty), quality: cost.quality, setupWeight: round3(setupWeight),
+        // #4454: штраф за разбиение последовательности — тоже в ВЕС и мимо setupWeight: гейт §8.4
+        // («некуда пристроить» → самый свободный станок) сравнивает ЧИСТУЮ переналадку с
+        // KNIVES_CHANGE+MATERIAL_CHANGE; подмешав туда штраф разрыва, мы бы гнали задания на пустой
+        // станок вместо того, чтобы просто выбрать другую точку вставки на этом же.
+        var brk = breakSequencePenalty(prevCut, slot, nextCut, ctx.settings);
+        if (brk.knives) byFactor.breakKnives = round3((byFactor.breakKnives || 0) + brk.knives);
+        if (brk.material) byFactor.breakMaterial = round3((byFactor.breakMaterial || 0) + brk.material);
+        return { weight: round3(cost.weight + orderPenalty + brk.knives + brk.material),
+                 quality: cost.quality, setupWeight: round3(setupWeight),
                  dayOffset: dayOff, placementDayKey: placementDayKey, byFactor: byFactor };
     }
 
@@ -708,7 +746,8 @@
         var KEYS = ['DEADLINE_COST_MN','EXACT_DEADLINE_COST_MN','FOIL_NOTEND_COST_MN','KNIVES_CHANGE_COST_MN',
                     'KNIVES_INCREASE_COST_MN','MATERIAL_CHANGE_COST_MN','LEADER_COST_MN','MAX_DISTANCE_COST_MN',
                     'CHANGE_SLITTER_COST_MN','CHANGE_DAY_COST_MN','SLOT_SPLIT_COST_MN','MAX_SLOTS_DISTANCE_HR','MAX_OUTAGE_PLANNABLE_HR',
-                    'ORDER_DIFF_PENALTY_MN'];   // #4194: смежность заказа
+                    'ORDER_DIFF_PENALTY_MN',    // #4194: смежность заказа
+                    'BREAK_KNIVES_COST_MN','BREAK_MATERIAL_COST_MN'];   // #4454: разбиение последовательности
         var vars = KEYS.map(function(k){
             var raw = s[k];
             var fromTable = raw != null && String(raw).trim() !== '' && isFinite(Number(raw));
