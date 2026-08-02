@@ -1495,6 +1495,11 @@
                 defectM: val(CUT_REQ.defectM),
                 defectPhoto: val(CUT_REQ.defectPhoto),
                 plannedRuns: valAny(CUT_PLANNED_RUNS_NAMES),
+                // #4579: СДЕЛАННЫЕ ПРОХОДЫ обязаны быть и здесь. Этот загрузчик даёт `currentCut` —
+                // именно ту запись, на которой оператор жмёт «✓ Готово». Без поля donePassCount
+                // возвращал 0, и следующая отметка писала «1», ЗАТИРАЯ накопленный счёт (боевое
+                // #4579: у задания 654079 факт 8 → 1, а «Погонаж факт» — 1×450 вместо 8×450).
+                actualRuns: val(CUT_REQ.actualRuns),
                 runLength: valAny(CUT_RUN_LENGTH_NAMES),
                 startedAt: valAny(CUT_STARTED_NAMES),
                 inWork: val(CUT_REQ.inWork),         // #3557: булев «В работе» (1162)
@@ -2653,7 +2658,19 @@
     AtexSlitter.prototype.applyBatchConsumption = function(cut, consumedM, finishMode) {
         var batch = cut && cut.batchId ? this.findBatch(cut.batchId) : null;
         var batchMeta = this.meta.batch;
-        if (!batch || !batchMeta) return Promise.resolve(null);
+        // #4580: списывать НЕКУДА — это не «нечего делать», а потерянный расход. Молча выходить
+        // нельзя (ТЗ §14): отметка прохода к этому моменту уже не пускает задание без партии,
+        // поэтому сюда попадаем только при рассинхроне справочника — о нём и говорим.
+        if (!batch || !batchMeta) {
+            if (cut && cut.batchId) {
+                console.error('[slitter] #4580: партия ' + cut.batchId + ' не найдена в справочнике — '
+                    + 'расход ' + consumedM + ' м НЕ списан');
+                if (typeof this.notify === 'function') {
+                    this.notify('Партия сырья задания не найдена — расход не списан (' + consumedM + ' м)', 'error');
+                }
+            }
+            return Promise.resolve(null);
+        }
         var remMReq = reqIdByName(batchMeta, BATCH_REQ.remainderM);
         var remAreaReq = reqIdByName(batchMeta, BATCH_REQ.remainder);
         var width = core.toNumber(batch.widthMm) || core.toNumber((this.materialWidths || {})[String(batch.materialId)]);
@@ -2773,7 +2790,29 @@
         if (target <= done) { this.notify('Все проходы уже отмечены', 'info'); return; }
 
         var run = function() {
-            // Завершение задания требует «Счётчик нач.» (как finishCut) — проверяем до записи.
+            // #4580: БЕЗ «Партии сырья» ПРОХОД НЕ ОТМЕЧАЕТСЯ. Партия — не формальность: из её
+            // остатка пульт подставляет «Счётчик нач.» (без него «Счётчик кон.» уходит в минус),
+            // и в неё же списывается расход (applyBatchConsumption). Задание без партии оператор
+            // отработал, а система молча не записала ни счётчик, ни расход — боевое #4580
+            // (Станок 3, «Резка 5 из 45»: счётчик пуст, «Счётчик кон.» −1800). Правило
+            // «у задания есть Партия сырья» есть в планировании (#4452, ТЗ §15) — здесь та же мерка
+            // на входе работы. Партию выбирают тут же, в блоке «Партии сырья».
+            if (!(cut.batchId && String(cut.batchId).trim() !== '')) {
+                self.notify('У задания нет «Партии сырья» — выберите партию: из её остатка берётся '
+                    + '«Счётчик нач.», в неё же списывается расход', 'error');
+                return;
+            }
+            // #4580: «Счётчик нач.» нужен УЖЕ НА ПЕРВОМ проходе, а не только при завершении.
+            // «Счётчик кон.» считается от него назад (#4321), и при пустом начале запись уходила в
+            // минус: боевое — «Счётчик нач.» пуст, 4 прохода × 450 → «Счётчик кон.» −1800. Отрицательный
+            // остаток рулона показанием не бывает; пустое значение нулём не подменяем (ТЗ §14) —
+            // просим заполнить. Ноль ЗАПОЛНЕННЫЙ законен: рулон домотали в ноль (#4321).
+            var startFilled = String(cut.counterStart == null ? '' : cut.counterStart).trim() !== '';
+            if (!startFilled) {
+                self.notify('Заполните «Счётчик нач.» — от него считается «Счётчик кон.» (счётчик мотает назад)', 'error');
+                return;
+            }
+            // Завершение задания требует ПОЛОЖИТЕЛЬНОГО «Счётчик нач.» (как finishCut).
             if (target >= total && !(core.toNumber(cut.counterStart) > 0)) {
                 self.notify('Заполните «Счётчик нач.» перед завершением задания', 'error');
                 return;
