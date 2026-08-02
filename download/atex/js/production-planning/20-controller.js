@@ -4168,6 +4168,7 @@
         var settle = deviationSettlePlan(this.cuts || [], groups, {
             todayKey: planDateDayKey(controllerNowMs(this)),
             shiftStartMin: Number(win && win.startMin) || 0,
+            shiftEndMin: Number(win && win.cutEndMin) || 0,   // #4572: чем закрывать выполненную часть
             freeDayMsFor: function(sid) { return self.nearestFreeDayMs(sid); }
         });
         var plan = settle.moves || [];
@@ -4206,7 +4207,7 @@
             return { cutId: p.id, ts: p.planStart, wasTs: planTsSeconds((byId[String(p.id)] || {}).planDate) };
         }), { onWrite: function(done) { self.updateProgress(done); } }).then(function() {
             // #4564: разделение частично выполненных — ПОСЛЕ переносов и до пересборки очереди.
-            return self.splitPartiallyDoneCuts(splits, win);
+            return self.splitPartiallyDoneCuts(splits);
         }).then(function(splitRes) {
             createdRestIds = ((splitRes && splitRes.createdIds) || []).map(String);
             return self.reload();
@@ -4231,7 +4232,7 @@
             //      очередь, а не перекидывает задания между станками и не оптимизирует раскладку.
             //      В scope с несколькими станками каждое задание к тому же замкнуто на свой станок
             //      (machineLockByCut) — миграции нет по построению.
-            var settleScope = settleMoveScope(plan, splits, createdRestIds, self.cuts || []);
+            var settleScope = settleMoveScope(plan, createdRestIds, self.cuts || []);
             return self.autoSequenceQueue(PLANNING_STRATEGY_SETUP, true, settleScope).then(function(res) {
                 // #4569: СВЕСТИ СТАРТЫ В ДНЯХ, КУДА МЫ САМИ УНЕСЛИ РАБОТУ. Пересборка может не
                 // переписать задание вовсе: страж снимает операции цепочки целиком, если часть их
@@ -4273,7 +4274,7 @@
     // место занимает остаток — он либо становится новой головой (тогда прежние продолжения
     // перецепляются на него), либо остаётся продолжением той же головы.
     // → Promise<{ count: разделённых заданий, createdIds: [id созданных остатков] }>
-    AtexProductionPlanning.prototype.splitPartiallyDoneCuts = function(splits, win) {
+    AtexProductionPlanning.prototype.splitPartiallyDoneCuts = function(splits) {
         var self = this;
         var list = (splits || []).filter(function(sp) { return sp && sp.id != null; });
         if (!list.length) return Promise.resolve({ count: 0, createdIds: [] });
@@ -4281,8 +4282,6 @@
         if (!cutMeta) return Promise.resolve({ count: 0, createdIds: [] });
         var finishedReqId = reqIdByName(cutMeta, CUT_REQ.finishedAt);
         var firstPartReqId = reqIdByName(cutMeta, CUT_REQ.firstPart);
-        var endMin = Number(win && win.endMin);
-        if (!isFinite(endMin)) endMin = 0;
         var byId = {};
         (this.cuts || []).forEach(function(c) { if (c && c.id != null) byId[String(c.id)] = c; });
 
@@ -4321,7 +4320,9 @@
                 // Закрыть выполненную часть концом смены её фактического дня.
                 if (finishedReqId) {
                     var f = {};
-                    f['t' + finishedReqId] = dayCloseStamp(sp.donePlanStart, endMin);
+                    // #4572: момент закрытия посчитан чистым правилом (не позже фактического начала
+                    // следующего задания станка) — здесь только формат DATETIME.
+                    f['t' + finishedReqId] = formatDateTimeStamp(sp.doneCloseTs != null ? sp.doneCloseTs : sp.donePlanStart);
                     tasks.push(function() { return self.post('_m_set/' + id + '?JSON', f); });
                 }
                 // Прежние продолжения цепочки — на новую голову (остаток).
@@ -4342,15 +4343,17 @@
     };
 
     // #4569: рамки пересборки после «Урегулировать» — ручное действие, однозначный сдвиг.
-    //   wholeDayCutIds — всё, что это действие перенесло, разделило и создало: страж не отбрасывает
+    //   wholeDayCutIds — всё, что это действие ПЕРЕНЕСЛО и СОЗДАЛО: страж не отбрасывает
     //     операции по ним (ручное сильнее заморозки), поэтому команда выполняется целиком;
     //   withinSlitterIds — станки этих заданий: пересборка не выходит за них и не перекидывает
     //     задания между станками (в scope с >1 станком каждое задание заперто на своём).
     // Чистая: cuts нужны только чтобы узнать станок задания. → moveScope
-    function settleMoveScope(moves, splits, createdIds, cuts) {
+    function settleMoveScope(moves, createdIds, cuts) {
         var ids = {}, sids = {};
         (moves || []).forEach(function(m) { if (m && m.id != null) ids[String(m.id)] = true; });
-        (splits || []).forEach(function(sp) { if (sp && sp.id != null) ids[String(sp.id)] = true; });
+        // #4572: ВЫПОЛНЕННЫХ частей здесь нет. Они факт, а не то, что оператор несёт: их день —
+        // день, когда работу реально делали, и планировщик их больше не видит вовсе (заполнено
+        // «Закончено»). Ручными объявляем только то, что действительно едет.
         (createdIds || []).forEach(function(id) { if (id != null && id !== '') ids[String(id)] = true; });
         (cuts || []).forEach(function(c) {
             if (!c || c.id == null || !ids[String(c.id)]) return;
@@ -4381,15 +4384,13 @@
         return Object.keys(keys);
     }
 
-    // #4564: момент закрытия выполненной части — конец смены того дня, в котором её делали.
-    // День берём из её нового планового времени (оно уже в фактическом дне), время — из окна
-    // смены: точнее минуты не знает никто, а день — знает («Начато»).
-    function dayCloseStamp(tsSec, endMin) {
+    // #4572: unix-секунды → DATETIME 'ГГГГ-ММ-ДД ЧЧ:ММ:СС' для записи «Закончено». Само значение
+    // выбирает чистое правило `doneCloseMoment`; здесь только формат.
+    function formatDateTimeStamp(tsSec) {
         var d = new Date(Number(tsSec) * 1000);
-        var h = Math.floor(endMin / 60), m = Math.round(endMin % 60);
         function p(n) { return (n < 10 ? '0' : '') + n; }
         return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
-            + ' ' + p(h) + ':' + p(m) + ':00';
+            + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
     }
 
     // #3475: «Удалить» — снести все задания выбранного дня. Показывает подтверждение
@@ -8830,12 +8831,22 @@
                 return !self.dayIsWorking(ms) || self.slitterOnVacationDay(sid, ms);   // выходной/праздник или отпуск станка
             };
         }
-        // #3974: вход планировщика = всё НЕОБЕСПЕЧЕННОЕ — открытые задания (статус ≠ «Завершён»),
-        // за ЛЮБЫЕ даты. Фильтра по [С; По] на входе больше нет: раньше scope-диапазон заодно
-        // отсекал прошлое/готовое, теперь отбираем явно по статусу, а [С; По] — окно РАЗМЕЩЕНИЯ
-        // (база = «С», splitMachineQueue набивает от неё и переливает за «По»). Обеспеченные
-        // («Завершён») и не показанные в очереди — не трогаем (остаются как есть).
-        var planInput = (cuts || []).filter(function(c){ return String(c && c.status || '').trim() !== 'Завершён'; });
+        // #3974: вход планировщика = всё НЕОБЕСПЕЧЕННОЕ — ОТКРЫТЫЕ задания, за ЛЮБЫЕ даты. Фильтра
+        // по [С; По] на входе больше нет: раньше scope-диапазон заодно отсекал прошлое/готовое,
+        // теперь отбираем явно, а [С; По] — окно РАЗМЕЩЕНИЯ (база = «С», splitMachineQueue набивает
+        // от неё и переливает за «По»).
+        // #4572: ВЫПОЛНЕННОЕ ЗАДАНИЕ — ФАКТ, А НЕ ПЛАН. «Открытое» = нет «Закончено» (и статус не
+        // «Завершён»). Одного статуса мало: отчёт `cut_planning` колонку статуса не отдаёт вовсе
+        // (в боевой ateh у ВСЕХ заданий приходит ''/'X'), поэтому фильтр по нему не отсеивал
+        // ничего — в раскладку шли и 111 давно выполненных заданий. Их день планировщик считал
+        // своим решением и переносил: выполненная часть, чей фактический день — суббота 01.08,
+        // «не удержала день» как нерабочий (#4434) и уехала на 04.08 — с планом в будущем и фактом
+        // в прошлом она тут же стала «выполнено досрочно» (issue #4572). Переставлять то, что уже
+        // сделано, нельзя: работа шла в тот день, какой был, включая выходной.
+        var planInput = (cuts || []).filter(function(c){
+            if (String(c && c.status || '').trim() === 'Завершён') return false;
+            return planTsSeconds(c && c.endDate) == null;
+        });
         // #4294: задания ПРОШЛЫХ дней (запланированные раньше «С») НЕ пере-планируем — они уже стоят на
         // своих днях. Планировщик кладёт всё от «С» вперёд (#3974) и день держит лишь у 🔒 (fixedDay),
         // поэтому НЕзафиксированное задание прошлого дня иначе затягивалось в «С» (issue #4294). Исключаем
