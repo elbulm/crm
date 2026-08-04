@@ -129,8 +129,9 @@
 .atex-sl-cut-spec { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .atex-sl-cut-time { font-size: 12px; color: var(--sl-muted); font-variant-numeric: tabular-nums; }
 /* #4606: номер заказа в карточке очереди — крупно и без подписи «Заказ»
-   (оператор ищет задание по заказу, крупное число ни с чем не спутать). */
-.atex-sl-cut-order { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+   (оператор ищет задание по заказу, крупное число ни с чем не спутать).
+   Слева от него — № по порядку (.atex-sl-cut-num), там же, где был № раньше. */
+.atex-sl-cut-order { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .atex-sl-cut-order-no {
     font-size: 22px;
     font-weight: 700;
