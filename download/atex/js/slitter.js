@@ -2043,10 +2043,10 @@
             // #4606: номер заказа — первой строкой и крупно: оператор ищет задание
             // по заказу, а не по позиции в очереди. Нет заказа (задание в запас или
             // отчёт недоступен) — строку не рисуем, карточка выглядит как раньше.
+            // Слова «Заказ» нет: крупное число в карточке ни с чем не спутать.
             var orderText = self.cutOrderText(cut);
             if (orderText) {
                 cutMain.push(el('div', { class: 'atex-sl-cut-order' }, [
-                    el('span', { class: 'atex-sl-cut-order-cap', text: 'Заказ' }),
                     el('span', { class: 'atex-sl-cut-order-no', text: orderText })
                 ]));
             }
@@ -2211,7 +2211,6 @@
         var orderText = this.cutOrderText(cut);
         if (orderText) {
             wrap.appendChild(el('div', { class: 'atex-sl-head-order' }, [
-                el('span', { class: 'atex-sl-head-order-cap', text: 'Заказ' }),
                 el('span', { class: 'atex-sl-head-order-no', text: orderText })
             ]));
         }
