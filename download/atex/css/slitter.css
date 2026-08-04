@@ -128,10 +128,10 @@
 .atex-sl-cut-num { font-weight: 700; flex: none; }
 .atex-sl-cut-spec { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .atex-sl-cut-time { font-size: 12px; color: var(--sl-muted); font-variant-numeric: tabular-nums; }
-/* #4606: номер заказа в карточке очереди — крупно (оператор ищет задание по заказу).
-   Подпись «Заказ» мелкая и приглушённая, чтобы кегль забирал сам номер. */
-.atex-sl-cut-order { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.atex-sl-cut-order-cap { flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--sl-muted); }
+/* #4606: номер заказа в карточке очереди — крупно и без подписи «Заказ»
+   (оператор ищет задание по заказу, крупное число ни с чем не спутать).
+   Слева от него — № по порядку (.atex-sl-cut-num), там же, где был № раньше. */
+.atex-sl-cut-order { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .atex-sl-cut-order-no {
     font-size: 22px;
     font-weight: 700;
@@ -171,9 +171,8 @@
 .atex-sl-head-main { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .atex-sl-head-title { margin: 0; font-size: 20px; }
 /* #4606: номер заказа текущего задания — строкой над заголовком, самый крупный
-   кегль пульта (планшет стоит у станка, номер читается издалека). */
+   кегль пульта (планшет стоит у станка, номер читается издалека), без подписи. */
 .atex-sl-head-order { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
-.atex-sl-head-order-cap { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--sl-muted); }
 .atex-sl-head-order-no { font-size: 30px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .atex-sl-head-meta { font-size: 13px; color: var(--sl-muted); }
 .atex-sl-head .atex-sl-life-actions { margin-top: 0; justify-content: flex-end; }

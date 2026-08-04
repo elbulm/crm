@@ -2041,19 +2041,25 @@
             var spec = [material, cut.winding || '—', dims].join(' / ');
             var cutMain = [];
             // #4606: номер заказа — первой строкой и крупно: оператор ищет задание
-            // по заказу, а не по позиции в очереди. Нет заказа (задание в запас или
-            // отчёт недоступен) — строку не рисуем, карточка выглядит как раньше.
+            // по заказу, а не по позиции в очереди. Подписи «Заказ» нет — её место
+            // слева от номера занимает № по порядку (.atex-sl-cut-num), поэтому
+            // спецификация уезжает второй строкой. Нет заказа (задание в запас или
+            // отчёт недоступен) — карточка остаётся прежней: «№ + спецификация».
             var orderText = self.cutOrderText(cut);
             if (orderText) {
                 cutMain.push(el('div', { class: 'atex-sl-cut-order' }, [
-                    el('span', { class: 'atex-sl-cut-order-cap', text: 'Заказ' }),
+                    el('span', { class: 'atex-sl-cut-num', text: String(idx + 1) }),
                     el('span', { class: 'atex-sl-cut-order-no', text: orderText })
                 ]));
+                cutMain.push(el('div', { class: 'atex-sl-cut-line1' }, [
+                    el('span', { class: 'atex-sl-cut-spec', text: spec })
+                ]));
+            } else {
+                cutMain.push(el('div', { class: 'atex-sl-cut-line1' }, [
+                    el('span', { class: 'atex-sl-cut-num', text: String(idx + 1) }),
+                    el('span', { class: 'atex-sl-cut-spec', text: spec })
+                ]));
             }
-            cutMain.push(el('div', { class: 'atex-sl-cut-line1' }, [
-                el('span', { class: 'atex-sl-cut-num', text: String(idx + 1) }),
-                el('span', { class: 'atex-sl-cut-spec', text: spec })
-            ]));
             var timeTxt = core.cutQueueTime(cut);
             if (timeTxt) cutMain.push(el('div', { class: 'atex-sl-cut-time', text: timeTxt }));
             if (locked) cutMain.push(el('span', { class: 'atex-sl-cut-sub', text: 'ожидает предыдущую' }));
@@ -2106,10 +2112,26 @@
         var runLen = core.toNumber(cut.runLength), runsN = core.toNumber(cut.plannedRuns);
         var dims = (runLen > 0 ? core.round3(runLen) + 'м' : '—') + (runsN > 0 ? ' * ' + runsN : '');
         var spec = [material, cut.winding || '—', dims].join(' / ');
-        var main = [el('div', { class: 'atex-sl-cut-line1' }, [
-            el('span', { class: 'atex-sl-cut-num', text: isNext ? '→' : '✓' }),
-            el('span', { class: 'atex-sl-cut-spec', text: spec })
-        ])];
+        // #4606: номер заказа крупно — как в карточках дня. Слева от него маркер
+        // «→»/«✓» (в карточке дня на этом месте № по порядку), спецификация —
+        // второй строкой; без заказа карточка остаётся однострочной.
+        var orderText = this.cutOrderText(cut);
+        var marker = isNext ? '→' : '✓';
+        var main = [];
+        if (orderText) {
+            main.push(el('div', { class: 'atex-sl-cut-order' }, [
+                el('span', { class: 'atex-sl-cut-num', text: marker }),
+                el('span', { class: 'atex-sl-cut-order-no', text: orderText })
+            ]));
+            main.push(el('div', { class: 'atex-sl-cut-line1' }, [
+                el('span', { class: 'atex-sl-cut-spec', text: spec })
+            ]));
+        } else {
+            main.push(el('div', { class: 'atex-sl-cut-line1' }, [
+                el('span', { class: 'atex-sl-cut-num', text: marker }),
+                el('span', { class: 'atex-sl-cut-spec', text: spec })
+            ]));
+        }
         var timeTxt = core.cutQueueTime(cut);
         if (timeTxt) main.push(el('div', { class: 'atex-sl-cut-time', text: timeTxt }));
         var card = el('button', {
@@ -2211,7 +2233,6 @@
         var orderText = this.cutOrderText(cut);
         if (orderText) {
             wrap.appendChild(el('div', { class: 'atex-sl-head-order' }, [
-                el('span', { class: 'atex-sl-head-order-cap', text: 'Заказ' }),
                 el('span', { class: 'atex-sl-head-order-no', text: orderText })
             ]));
         }
