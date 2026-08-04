@@ -2112,10 +2112,26 @@
         var runLen = core.toNumber(cut.runLength), runsN = core.toNumber(cut.plannedRuns);
         var dims = (runLen > 0 ? core.round3(runLen) + 'м' : '—') + (runsN > 0 ? ' * ' + runsN : '');
         var spec = [material, cut.winding || '—', dims].join(' / ');
-        var main = [el('div', { class: 'atex-sl-cut-line1' }, [
-            el('span', { class: 'atex-sl-cut-num', text: isNext ? '→' : '✓' }),
-            el('span', { class: 'atex-sl-cut-spec', text: spec })
-        ])];
+        // #4606: номер заказа крупно — как в карточках дня. Слева от него маркер
+        // «→»/«✓» (в карточке дня на этом месте № по порядку), спецификация —
+        // второй строкой; без заказа карточка остаётся однострочной.
+        var orderText = this.cutOrderText(cut);
+        var marker = isNext ? '→' : '✓';
+        var main = [];
+        if (orderText) {
+            main.push(el('div', { class: 'atex-sl-cut-order' }, [
+                el('span', { class: 'atex-sl-cut-num', text: marker }),
+                el('span', { class: 'atex-sl-cut-order-no', text: orderText })
+            ]));
+            main.push(el('div', { class: 'atex-sl-cut-line1' }, [
+                el('span', { class: 'atex-sl-cut-spec', text: spec })
+            ]));
+        } else {
+            main.push(el('div', { class: 'atex-sl-cut-line1' }, [
+                el('span', { class: 'atex-sl-cut-num', text: marker }),
+                el('span', { class: 'atex-sl-cut-spec', text: spec })
+            ]));
+        }
         var timeTxt = core.cutQueueTime(cut);
         if (timeTxt) main.push(el('div', { class: 'atex-sl-cut-time', text: timeTxt }));
         var card = el('button', {
