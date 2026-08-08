@@ -178,5 +178,53 @@ function lateIds(rows, due) {
         '(продолжений 4624: ' + contOf('4624').length + ')');
 })();
 
+// ── I/J: СТРАЖ FIT_IN_SHIFT_NO_SPLIT ловит регрессию на записи ──────────────────────────────
+// Самый честный вход: ВЫКЛЮЧАЕМ правило (fitInShiftNoSplit: false) — упаковщик возвращается к
+// прежнему поведению и рвёт 4587, — и проверяем, что страж об этом СКАЖЕТ. С включённым правилом
+// нарушений быть не должно. Так тест меряет не вызовы, а то, ловится ли дефект.
+(function () {
+    var BASE = new Date(2026, 7, 10, 0, 0, 0, 0).getTime();
+    var DAY0 = Math.floor(BASE / 1000) + 8 * 3600;
+    function qc(id, runs, off) {
+        return { id: id, slitter: { id: '1' }, materialId: 'M1', winding: 'OUT', batchId: 'B1',
+                 knifeWidths: [100], knifeCount: 1, rollerWidth: 100, plannedRuns: runs,
+                 isFoil: false, fixed: true, status: '', firstPartId: id, planDate: String(DAY0 + off) };
+    }
+    var cuts = [qc('4625', 23, 0), qc('4617', 38, 60), qc('4624', 118, 120), qc('4587', 336, 180)];
+    var due = { '4625': 1, '4617': 1, '4624': 1, '4587': 0 };
+    function plan(ruleOn) {
+        return P.planCutOperations(cuts, {
+            planBaseMidnightMs: BASE, weights: {}, times: TIMES,
+            dayStartMin: 480, dayEndMin: 480 + CAP, dayEndHourMin: 480 + CAP,
+            maxOverworkCutsMin: 5, maxOverworkTuneMin: 10, lunchStartMin: 740, lunchDurationMin: 40,
+            gapFill: true, preserveOrder: false, slotPlacement: true, firstCutSetup: false,
+            prevSetupBySlitter: {}, intraDayResequence: true, perPassByCut: { '4625': 1, '4617': 1, '4624': 1, '4587': 1 },
+            slitterIds: ['1'], dueDayByCut: due, dueKeyByCut: {},
+            dayAnchorByCut: { '4625': 0, '4617': 0, '4624': 0, '4587': 0 },
+            fitInShiftNoSplit: ruleOn
+        });
+    }
+    // Контекст стража: отдаём ровно тот факт, который посчитал упаковщик (как это делает контроллер).
+    function guard(ops) {
+        return P.guardPlanOps(ops, {
+            splitFitsDays: function () { return (ops.splitFits || []).slice(); },
+            isManualMoveCut: function () { return false; }
+        }, 'auto');
+    }
+    var offRes = guard(plan(false));
+    var onRes = guard(plan(true));
+    var pick = function (r) {
+        return ((r && (r.violations || r.dropped || r)) || []).filter
+            ? (r.violations || []).filter(function (v) { return v.rule === 'FIT_IN_SHIFT_NO_SPLIT'; })
+            : [];
+    };
+    assert(pick(offRes).length > 0,
+        '#4650-I: с ВЫКЛЮЧЕННЫМ правилом страж видит нарушение — храповик работает',
+        '(нарушений: ' + pick(offRes).length + (pick(offRes)[0] ? ' · ' + pick(offRes)[0].msg.slice(0, 90) : '') + ')');
+    assert(pick(onRes).length === 0,
+        '#4650-J: с включённым правилом нарушений нет',
+        '(нарушений: ' + pick(onRes).length + ')');
+})();
+
 console.log('\n' + passed + '/' + total + ' проверок пройдено');
 if (passed !== total) process.exitCode = 1;

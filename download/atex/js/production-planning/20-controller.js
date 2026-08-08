@@ -9990,6 +9990,17 @@
                                  needMin: u.needMin, donorCutId: u.donorCutId };
                     });
                 },
+                // #4650: задания, которые раскладка разорвала, ХОТЯ они влезали в смену, и уступить
+                // было кому (страж FIT_IN_SHIFT_NO_SPLIT). Считает упаковщик (ops.splitFits) — окна и
+                // разбиение по дням знает только он. Смещение дня → ключ ГГГГММДД, как у dayLoad.
+                splitFitsDays: function(){
+                    return ((ops && ops.splitFits) || []).map(function(r){
+                        var dayKey = planDateDayKey(String(Math.floor((planBaseMidnightMs + Number(r.day) * 86400000) / 1000)));
+                        return { cutId: String(r.cutId), slitterId: String(r.slitterId), day: dayKey,
+                                 totalMin: r.totalMin, capMin: r.capMin, dueDay: r.dueDay,
+                                 days: (r.days || []).slice(), yieldableIds: (r.yieldableIds || []).slice() };
+                    });
+                },
                 // #4464: ХРАНИМЫЙ план — по нему правило FIXED_BLOCK видит, какие 🔒 стояли подряд
                 // и в каком порядке (операции несут только изменившиеся записи, #3427).
                 // #4488: chainId («ID первой части») — по нему правило CHAIN_CONTIGUOUS видит, какие

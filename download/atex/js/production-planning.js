@@ -4167,6 +4167,56 @@
             }
         },
         {
+            id: 'FIT_IN_SHIFT_NO_SPLIT',
+            tz: '§9/§15 (#4650)',
+            actor: 'auto',      // ручное действие оператора правилом не связано (ТЗ §15) — он режет сам, осознанно
+            mode: 'audit',      // отбрасывать нечего: разрыв — свойство ВСЕЙ раскладки, а не одной записи
+            why: 'отбрасывать нечего: разрыв — свойство всей раскладки, а не одной операции. Отказ от '
+                 + 'записи оставил бы задание разорванным ровно так же (та же природа, что CHAIN_CONTIGUOUS '
+                 + 'и DAY_FILL); чинится он ПОСТРОЕНИЕМ — резервом целостности в упаковщике',
+            title: 'Задание, влезающее в смену, не разрывается: день уступает более поздний срок',
+            // ЧТО ПРОВЕРЯЕТСЯ. Правило заказчика от 07.08.2026 (#4650): «влезает в смену → не
+            // разрывать, двигать паровозом». Нарушение — задание, у которого ОДНОВРЕМЕННО:
+            //   • сегменты стоя́т больше чем на одном дне (разорвано);
+            //   • ВСЯ его занятость влезает в смену (значит разрыв не был неизбежным);
+            //   • на дне головы стои́т чужая работа с БОЛЕЕ ПОЗДНИМ сроком — было кому уступить.
+            // Не влезает в пустую смену — правило молчит: рвать такое по границе дня заказчик
+            // разрешил прямо (#4519, и #4512 про последнее зафиксированное). Уступать было некому —
+            // тоже молчит: разрыв законен.
+            //
+            // ПОЧЕМУ ХРАПОВИК, А НЕ РАСЧЁТ. Соблюдение обеспечивает упаковщик (`fitWholeBy` →
+            // `fitReserve` → `yieldWholeForFit`, #4650). Правило здесь — детектор регрессии: если
+            // какой-то путь записи снова начнёт добивать день до потолка и рвать последнего, шлюз
+            // скажет об этом на ВСЕХ входах разом. Боевой случай, на котором это ловится: заказ 4587
+            // (ateh, Станок 1, 10.08.2026) — 336 мин при потолке 455 рвались 81/19 за тремя 🔒 со
+            // сроком на день позже.
+            //
+            // ctx.splitFitsDays() → [{ cutId, slitterId, day, totalMin, capMin, dueDay, days,
+            // yieldableIds }] — считает САМ упаковщик (`ops.splitFits`): окна и разбиение по дням
+            // знает только он, снаружи ту же мерку не воспроизвести. Нет предиката или нет сроков в
+            // плане → правило не срабатывает (общая конвенция реестра: нет данных — нет обвинений).
+            check: function(ops, ctx) {
+                var fn = (ctx && typeof ctx.splitFitsDays === 'function') ? ctx.splitFitsDays : null;
+                if (!fn) return [];
+                var rows = fn() || [];
+                var manual = (ctx && typeof ctx.isManualMoveCut === 'function') ? ctx.isManualMoveCut : null;
+                var out = [];
+                rows.forEach(function(r) {
+                    if (!r || r.cutId == null) return;
+                    if (manual && manual(r.cutId)) return;   // оператор двигает это задание сам (ТЗ §15)
+                    out.push(ppViolation('FIT_IN_SHIFT_NO_SPLIT', r.cutId,
+                        'задание разорвано по дням (' + (r.days || []).join(', ') + '), хотя влезало в смену целиком: '
+                        + Math.round(Number(r.totalMin) || 0) + ' мин при потолке ' + Math.round(Number(r.capMin) || 0)
+                        + '; на дне головы стояла работа с более поздним сроком (' + (r.yieldableIds || []).join(', ')
+                        + ') — ей и следовало уступить день',
+                        { slitterId: r.slitterId == null ? undefined : String(r.slitterId),
+                          day: r.day, totalMin: r.totalMin, capMin: r.capMin, dueDay: r.dueDay,
+                          days: (r.days || []).slice(), yieldableIds: (r.yieldableIds || []).slice() }));
+                });
+                return out;
+            }
+        },
+        {
             id: 'SUPPLY_CONSERVED',
             tz: '§15 (#4536)',
             actor: 'any',       // недообеспеченный заказ — брак независимо от того, кто его создал
@@ -10160,6 +10210,13 @@
         // станкам и отдаём с операциями: страж записи обязан отказать такому плану, иначе голова
         // запишется урезанной, а остаток не родится никогда (заказы 4607/4615, 07.08.2026).
         var unplaced = [];
+        // #4650: задания, которые раскладка РАЗОРВАЛА по дням, ХОТЯ они влезали в смену целиком, и
+        // на дне головы стояла работа с БОЛЕЕ ПОЗДНИМ сроком — то есть было кому уступить. Считает
+        // сам упаковщик (только он знает окна и разбиение), страж FIT_IN_SHIFT_NO_SPLIT читает
+        // готовый факт — ровно как dayLoad для DAY_CAPACITY (#4467) и dayFill для DAY_FILL (#4469).
+        var splitFits = [];
+        var capFitMin = dayCapacityMinutes(windowFromOpts(opts), 'cuts');
+        var dueFit = opts.dueDayByCut || null;
         // headId → число использованных записей цепочки (голова + переиспользованные продолжения).
         var usedByHead = {};
         mOrder.forEach(function(key){
@@ -10168,6 +10225,39 @@
                 var dk = String(key) + '|' + Number(seg.dayOffset);
                 dayLoad[dk] = round3((dayLoad[dk] || 0) + (Number(seg.setupMin) || 0) + (Number(seg.durationMin) || 0));
             });
+            // #4650: упаковщик держит все сегменты одного задания под ОДНИМ cutId, поэтому «задание
+            // разорвано» = его сегменты стоят больше чем на одном дне.
+            if (dueFit && capFitMin > 0) {
+                var fitAcc = {};
+                segs.forEach(function(seg){
+                    if (seg.setupOnly) return;
+                    var id = String(seg.cutId), d = Number(seg.dayOffset);
+                    var a = fitAcc[id] = fitAcc[id] || { days: [], min: 0, headDay: null };
+                    if (a.days.indexOf(d) === -1) a.days.push(d);
+                    a.min = round3(a.min + (Number(seg.setupMin) || 0) + (Number(seg.durationMin) || 0));
+                    if (a.headDay == null || d < a.headDay) a.headDay = d;
+                });
+                Object.keys(fitAcc).forEach(function(id){
+                    var a = fitAcc[id];
+                    if (a.days.length < 2) return;                      // не разорвано
+                    if (a.min > capFitMin + 1e-6) return;               // в смену не влезало — правило не про него (#4519)
+                    var myDue = dueFit[id] != null ? Number(dueFit[id]) : null;
+                    if (myDue == null || !isFinite(myDue)) return;      // срока нет — обвинять не в чем
+                    // Было ли кому уступить: на дне головы стои́т чужая работа с БОЛЕЕ ПОЗДНИМ сроком.
+                    var yielders = [];
+                    Object.keys(fitAcc).forEach(function(other){
+                        if (other === id) return;
+                        if (fitAcc[other].days.indexOf(a.headDay) === -1) return;
+                        var od = dueFit[other] != null ? Number(dueFit[other]) : Infinity;
+                        if (od > myDue) yielders.push(other);
+                    });
+                    if (!yielders.length) return;                       // уступать было некому — разрыв законен
+                    splitFits.push({ cutId: id, slitterId: String(key), day: a.headDay,
+                                     totalMin: a.min, capMin: round3(capFitMin), dueDay: myDue,
+                                     days: a.days.slice().sort(function(x, y){ return x - y; }),
+                                     yieldableIds: yielders });
+                });
+            }
             (segs.unplaced || []).forEach(function(u){
                 unplaced.push({ cutId: String(u.cutId), runs: Number(u.runs) || 0, slitterId: String(key) });
             });
@@ -10247,6 +10337,7 @@
         // #4645: unplaced — проходы, которых раскладка не разместила НИГДЕ (работа исчезла бы молча).
         return { updates: updates, creates: creates, deletes: deletes, overdue: overdueResidual,
                  placement: slotPlan ? (slotPlan.trace || null) : null, dayLoad: dayLoad, dayFill: dayFill,
+                 splitFits: splitFits,   // #4650: разорвано то, что влезало в смену (страж FIT_IN_SHIFT_NO_SPLIT)
                  unplaced: unplaced };
     }
 
@@ -23609,6 +23700,17 @@
                         var dayKey = planDateDayKey(String(Math.floor((planBaseMidnightMs + Number(u.day) * 86400000) / 1000)));
                         return { key: String(u.slitterId) + '|' + dayKey, freeMin: u.freeMin,
                                  needMin: u.needMin, donorCutId: u.donorCutId };
+                    });
+                },
+                // #4650: задания, которые раскладка разорвала, ХОТЯ они влезали в смену, и уступить
+                // было кому (страж FIT_IN_SHIFT_NO_SPLIT). Считает упаковщик (ops.splitFits) — окна и
+                // разбиение по дням знает только он. Смещение дня → ключ ГГГГММДД, как у dayLoad.
+                splitFitsDays: function(){
+                    return ((ops && ops.splitFits) || []).map(function(r){
+                        var dayKey = planDateDayKey(String(Math.floor((planBaseMidnightMs + Number(r.day) * 86400000) / 1000)));
+                        return { cutId: String(r.cutId), slitterId: String(r.slitterId), day: dayKey,
+                                 totalMin: r.totalMin, capMin: r.capMin, dueDay: r.dueDay,
+                                 days: (r.days || []).slice(), yieldableIds: (r.yieldableIds || []).slice() };
                     });
                 },
                 // #4464: ХРАНИМЫЙ план — по нему правило FIXED_BLOCK видит, какие 🔒 стояли подряд

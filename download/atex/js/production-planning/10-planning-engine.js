@@ -5632,6 +5632,13 @@
         // станкам и отдаём с операциями: страж записи обязан отказать такому плану, иначе голова
         // запишется урезанной, а остаток не родится никогда (заказы 4607/4615, 07.08.2026).
         var unplaced = [];
+        // #4650: задания, которые раскладка РАЗОРВАЛА по дням, ХОТЯ они влезали в смену целиком, и
+        // на дне головы стояла работа с БОЛЕЕ ПОЗДНИМ сроком — то есть было кому уступить. Считает
+        // сам упаковщик (только он знает окна и разбиение), страж FIT_IN_SHIFT_NO_SPLIT читает
+        // готовый факт — ровно как dayLoad для DAY_CAPACITY (#4467) и dayFill для DAY_FILL (#4469).
+        var splitFits = [];
+        var capFitMin = dayCapacityMinutes(windowFromOpts(opts), 'cuts');
+        var dueFit = opts.dueDayByCut || null;
         // headId → число использованных записей цепочки (голова + переиспользованные продолжения).
         var usedByHead = {};
         mOrder.forEach(function(key){
@@ -5640,6 +5647,39 @@
                 var dk = String(key) + '|' + Number(seg.dayOffset);
                 dayLoad[dk] = round3((dayLoad[dk] || 0) + (Number(seg.setupMin) || 0) + (Number(seg.durationMin) || 0));
             });
+            // #4650: упаковщик держит все сегменты одного задания под ОДНИМ cutId, поэтому «задание
+            // разорвано» = его сегменты стоят больше чем на одном дне.
+            if (dueFit && capFitMin > 0) {
+                var fitAcc = {};
+                segs.forEach(function(seg){
+                    if (seg.setupOnly) return;
+                    var id = String(seg.cutId), d = Number(seg.dayOffset);
+                    var a = fitAcc[id] = fitAcc[id] || { days: [], min: 0, headDay: null };
+                    if (a.days.indexOf(d) === -1) a.days.push(d);
+                    a.min = round3(a.min + (Number(seg.setupMin) || 0) + (Number(seg.durationMin) || 0));
+                    if (a.headDay == null || d < a.headDay) a.headDay = d;
+                });
+                Object.keys(fitAcc).forEach(function(id){
+                    var a = fitAcc[id];
+                    if (a.days.length < 2) return;                      // не разорвано
+                    if (a.min > capFitMin + 1e-6) return;               // в смену не влезало — правило не про него (#4519)
+                    var myDue = dueFit[id] != null ? Number(dueFit[id]) : null;
+                    if (myDue == null || !isFinite(myDue)) return;      // срока нет — обвинять не в чем
+                    // Было ли кому уступить: на дне головы стои́т чужая работа с БОЛЕЕ ПОЗДНИМ сроком.
+                    var yielders = [];
+                    Object.keys(fitAcc).forEach(function(other){
+                        if (other === id) return;
+                        if (fitAcc[other].days.indexOf(a.headDay) === -1) return;
+                        var od = dueFit[other] != null ? Number(dueFit[other]) : Infinity;
+                        if (od > myDue) yielders.push(other);
+                    });
+                    if (!yielders.length) return;                       // уступать было некому — разрыв законен
+                    splitFits.push({ cutId: id, slitterId: String(key), day: a.headDay,
+                                     totalMin: a.min, capMin: round3(capFitMin), dueDay: myDue,
+                                     days: a.days.slice().sort(function(x, y){ return x - y; }),
+                                     yieldableIds: yielders });
+                });
+            }
             (segs.unplaced || []).forEach(function(u){
                 unplaced.push({ cutId: String(u.cutId), runs: Number(u.runs) || 0, slitterId: String(key) });
             });
@@ -5719,6 +5759,7 @@
         // #4645: unplaced — проходы, которых раскладка не разместила НИГДЕ (работа исчезла бы молча).
         return { updates: updates, creates: creates, deletes: deletes, overdue: overdueResidual,
                  placement: slotPlan ? (slotPlan.trace || null) : null, dayLoad: dayLoad, dayFill: dayFill,
+                 splitFits: splitFits,   // #4650: разорвано то, что влезало в смену (страж FIT_IN_SHIFT_NO_SPLIT)
                  unplaced: unplaced };
     }
 
