@@ -2964,6 +2964,13 @@
         // Резерв снимается, как только задание размещено (remaining = 0), и не действует на другие дни.
         var wholeDayBy = opts.wholeDayByCut || {};
         var wholeDayIds = Object.keys(wholeDayBy);
+        // #4650 (ТЗ §9): ЗАДАНИЕ, ВЛЕЗАЮЩЕЕ В СМЕНУ, НЕ РАЗРЫВАЕТСЯ — УСТУПАЕТ БОЛЕЕ ПОЗДНИЙ СРОК.
+        // Механика та же, что у ручного переноса (#4488): полная занятость задания резервируется в
+        // его дне, соседи считают остаток дня уже без неё и уезжают сами. Отличие — резерв выдаётся
+        // АВТОМАТИЧЕСКИ (заполняется ниже, `fitWholeBy`) и действует ТОЛЬКО против заданий с БОЛЕЕ
+        // ПОЗДНИМ сроком: правило физически не может ничего просрочить, а план без сроков
+        // (`dueDayByCut` пуст) им не затрагивается вовсе.
+        var fitWholeBy = {};
         // #4542: задания, которые оператор двигает ПРЯМО СЕЙЧАС (все ручные признаки — см.
         // planCutOperations). Запрет «🔒 не обгонять» их не связывает (ТЗ §15).
         var manualMoveBy = opts.manualMoveByCut || {};
@@ -3016,10 +3023,52 @@
         // Для 🔒 своего дня из резерва исключаются НЕЗАФИКСИРОВАННЫЕ переносы: свободное задание
         // не отбирает место у замка. Перенос САМОЙ 🔒 (оператор и зафиксировал, и подвинул) резерв
         // сохраняет — там лестница #4467 решает, как прежде (#4497).
+        // #4650: резерв под задание, которое ЦЕЛИКОМ влезает в смену и стои́т на дне своего срока.
+        // Считается ТОЛЬКО против соседа с БОЛЕЕ ПОЗДНИМ сроком (или бессрочного): у равного и более
+        // раннего срока места не отнимаем — иначе правило само создавало бы просрочку, ради
+        // устранения которой заведено. Нет сроков → резерв нулевой, поведение прежнее.
+        function fitReserve(d, exceptId) {
+            var ids = Object.keys(fitWholeBy);
+            if (!ids.length) return 0;
+            var dueBy = opts.dueDayByCut || {};
+            var exKey = exceptId == null ? null : String(exceptId);
+            var exDue = (exKey != null && dueBy[exKey] != null) ? Number(dueBy[exKey]) : Infinity;
+            var total = 0;
+            for (var fi = 0; fi < ids.length; fi++) {
+                var id = ids[fi];
+                if (exKey != null && id === exKey) continue;
+                if (Number(fitWholeBy[id]) !== d) continue;
+                var st = state[id];
+                if (!st || !(st.remaining > 0) || !(st.perPass > 0)) continue;   // размещено или вырожденное
+                var idDue = dueBy[id] != null ? Number(dueBy[id]) : Infinity;
+                if (!(idDue < exDue)) continue;   // уступает только БОЛЕЕ ПОЗДНИЙ срок
+                total += setupCostFor(prevPhysical, st.cut) + st.remaining * (st.perPass + leader);
+            }
+            return round3(total);
+        }
+        // #4650: должен ли ТЕКУЩИЙ кандидат уступить день ЦЕЛИКОМ вместо разрыва. Да — когда место
+        // у него отнял резерв целостности соседа с более ранним сроком, сам он влезает в пустую
+        // смену следующего дня и от переезда не опаздывает. Уступаем ОДИН раз (`yieldedForFit`):
+        // иначе задание убегало бы по дням, пока не кончится горизонт.
+        function yieldWholeForFit(id, d) {
+            if (opts.fitInShiftNoSplit === false || !opts.dueDayByCut) return false;
+            var key = String(id), st = state[key];
+            if (!st || st.yieldedForFit || st.isCont) return false;   // продолжение доводим здесь: ножи на станке
+            if (fitWholeBy[key] != null) return false;                // резерв ЕГО собственный
+            if (wholeDayBy[key] != null || manualMoveBy[key]) return false;   // оператор двигает прямо сейчас (#4488/#4542)
+            if (!(st.remaining > 0) || !(st.perPass > 0)) return false;
+            if (!(fitReserve(d, key) > 0)) return false;              // место отнял не резерв целостности
+            var nd = nextUnfrozenDay(d + 1);
+            var due = opts.dueDayByCut[key] != null ? Number(opts.dueDayByCut[key]) : null;
+            if (due != null && isFinite(due) && due < nd) return false;   // уехать = опоздать
+            var setupY = firstSetupParts(st.cut, times)
+                .reduce(function(s, p){ return s + (Number(p.minutes) || 0); }, 0);
+            return round3(setupY + st.remaining * (st.perPass + leader)) <= round3(effCapacity(nd)) + 1e-6;
+        }
         function reserveAgainst(d, exceptId) {
             var stEx = exceptId == null ? null : state[String(exceptId)];
             var isFixedHere = !!(stEx && stEx.fixedDay != null && stEx.fixedDay === d);
-            return wholeReserve(d, exceptId, isFixedHere);
+            return round3(wholeReserve(d, exceptId, isFixedHere) + fitReserve(d, exceptId));
         }
         function availFor(d, kind, exceptId) {
             var occWhole = dayWholeOccupied(d);   // #4149: потолок считаем по ЦЕЛОЙ занятости (= колонки/бейдж), не по дробному clock
@@ -3180,6 +3229,57 @@
                     return (ta - tb) || (state[a].idx - state[b].idx);
                 });
             });
+            // #4650 (ТЗ §9, заказчик 07.08.2026): «влезает в смену → не разрывать, двигать паровозом».
+            // КОМУ выдаём резерв целостности. Задание обязано быть цельным, когда одновременно:
+            //   • день ему УЖЕ задан (🔒-замок или якорь дня) — иначе оно свободно и уедет само;
+            //   • СРОК НАСТУПИЛ на этом дне (due ≤ день) — позже двигать нельзя, будет просрочка;
+            //   • оно ЦЕЛИКОМ влезает в пустую смену этого дня. Не влезает — правило не про него:
+            //     рвать такое по границе дня заказчик разрешил прямо (#4519, и #4512 про последнее 🔒).
+            // Сколько выдаём. Идём по возрастанию срока (при равенстве — хранимый порядок) и копим,
+            // пока сумма помещается в смену. Кто за границу не поместился — резерва НЕ получает и
+            // уступает день целиком: это и есть «сдвинуть паровоз». Боевой случай 4587 (Станок 1,
+            // 10.08.2026): 336 мин со сроком 10.08 стояли ЧЕТВЁРТЫМИ за тремя 🔒 со сроком 11.08
+            // (23 + 38 + 118) и рвались 81/19 с просрочкой хвоста. По этому правилу 336 + 23 + 38
+            // = 397 ≤ 455 остаются, 118 уезжает на 11.08 целиком — ровно та раскладка, которую
+            // диспетчер собрал руками двумя переносами 🗓.
+            // Наладку считаем ПЕРВОЙ (`firstSetupParts`) — оценка сверху: реальная переналадка от
+            // соседа дешевле, поэтому «влезает» мы говорим осторожнее, чем упаковщик потом уложит.
+            if (opts.fitInShiftNoSplit !== false && opts.dueDayByCut) {
+                var dueByFit = opts.dueDayByCut;
+                var fitByDay = {};
+                poolOrder.forEach(function(id){
+                    var st = state[id];
+                    if (!st || !(st.remaining > 0) || !(st.perPass > 0)) return;
+                    var d = st.fixedDay != null ? st.fixedDay : st.anchor;
+                    if (d == null || !isFinite(Number(d))) return;
+                    var due = dueByFit[id] != null ? Number(dueByFit[id]) : null;
+                    if (due == null || !isFinite(due) || due > Number(d)) return;   // срок ещё не поджимает
+                    (fitByDay[Number(d)] = fitByDay[Number(d)] || []).push(id);
+                });
+                Object.keys(fitByDay).forEach(function(dk){
+                    var d = Number(dk);
+                    var room = effCapacity(d);
+                    if (!(room > 0)) return;
+                    var used = 0;
+                    fitByDay[dk].sort(function(a, b){
+                        var da = Number(dueByFit[a]), db = Number(dueByFit[b]);
+                        return (da - db) || (state[a].idx - state[b].idx);
+                    }).forEach(function(id){
+                        var st = state[id];
+                        var setupFit = firstSetupParts(st.cut, times)
+                            .reduce(function(s, p){ return s + (Number(p.minutes) || 0); }, 0);
+                        var need = round3(setupFit + st.remaining * (st.perPass + leader));
+                        if (need > room + 1e-6) return;          // в пустую смену не влезает — см. #4519
+                        if (used + need > room + 1e-6) return;   // день уже занят своими — этот уступает целиком
+                        used = round3(used + need);
+                        fitWholeBy[id] = d;
+                    });
+                });
+                if (Object.keys(fitWholeBy).length) {
+                    ppTrace('#4650 целостность смены: ' + Object.keys(fitWholeBy).map(function(id){
+                        return id + '→день ' + fitWholeBy[id]; }).join(', '));
+                }
+            }
             // #4542 (ТЗ §15): АВТОМАТИКА НЕ ОБГОНЯЕТ 🔒. Замок держит не только день и место в дне
             // (#4497), но и ОЧЕРЁДНОСТЬ: подвижное задание не встаёт РАНЬШЕ зафиксированного, за
             // которым оно стояло. Прежде правило смотрело только ВНУТРЬ дня 🔒, а набивка ранних
@@ -3761,6 +3861,21 @@
                     // остаток — продолжением на следующий день. fixedDay снимаем: остаток идёт штатной
                     // веткой продолжения (inProgress), продолжение НЕ зафиксировано. Красное предупреждение
                     // рисует рендер: зафикс-резка с признаком дробления «→» (#4304 renderQueue).
+                    // #4650: УСТУПАТЬ — ЦЕЛИКОМ. Место у этого задания отнял резерв целостности
+                    // соседа с БОЛЕЕ РАННИМ сроком (fitReserve). Разорвать его здесь значило бы
+                    // переложить тот же дефект на другой заказ — ровно это и вышло в боевом случае
+                    // 4587, где вместо него разъехался 4624 (27 проходов → 11 + 16). Уезжает
+                    // целиком, и только когда от этого НИКТО не опаздывает: своё задание влезает в
+                    // пустую смену следующего дня, а его срок этот день переживает. Иначе — прежний
+                    // разрыв по потолку (#4304/#4512): опоздание хуже разрыва.
+                    if (yieldWholeForFit(pick, day)) {
+                        var nextFitDay = nextUnfrozenDay(day + 1);
+                        ppTrace('#4650 ФИКС-резка ' + pick + ' уступает день ' + day + ' целиком → день ' +
+                            nextFitDay + ' (место отдано более раннему сроку, разрыв не нужен)');
+                        st.fixedDay = nextFitDay; st.anchor = nextFitDay; st.yieldedForFit = true;
+                        if (leaveDay()) continue;
+                        continue;
+                    }
                     var passesNowF = fittingF > 0 ? fittingF : 1;   // хотя бы 1 проход держим на фикс-дне
                     var wsF2 = day * 1440 + dayStart + clock;
                     var durF2 = passesNowF * perPassF;
@@ -5098,6 +5213,8 @@
                 orderAuthoritative: forceOrderAuthoritative || !!slotPlan,
                 pinDayPosByCut: opts.pinDayPosByCut,   // #4464: ручной перенос 🗓 «в начало дня» / «в конец дня»
                 wholeDayByCut: opts.wholeDayByCut,     // #4488: перенесённое задание ложится в свой день ЦЕЛИКОМ
+                dueDayByCut: opts.dueDayByCut,         // #4650: чей срок раньше — тот и не разрывается
+                fitInShiftNoSplit: opts.fitInShiftNoSplit,   // #4650: выключатель правила целостности смены
                 manualMoveByCut: manualMoveByCut       // #4542: кого оператор двигает СЕЙЧАС — запрет обгона 🔒 их не связывает
             };
             // #4085 (модель #3985): дедлайн-фольга у своего срока обеспечивается локальным штрафом в слое
