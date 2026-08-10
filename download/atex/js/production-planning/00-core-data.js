@@ -50,6 +50,27 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
     'use strict';
 
+    // #4665: подбор ТИПОРАЗМЕРА упаковки (короб и норма укладки) — общий модуль
+    // download/atex/js/packaging-size.js. В браузере он подключён шаблоном
+    // (window.AtexPackagingSize), в Node приезжает соседним файлом рядом с бандлом.
+    // Нет модуля — планирование работает как раньше, просто без коробов.
+    // #4685: ищем модуль КАЖДЫЙ раз, а не единожды при разборе бандла: старый шаблон
+    // без тега (шаблоны выкладываются отдельно от js) или загрузка бандла раньше модуля
+    // навсегда оставляли бы подбор выключенным — ровно та тишина, из-за которой
+    // типоразмера не было видно. Нашли — запоминаем.
+    var packingCached = null;
+    function packing() {
+        if (packingCached) return packingCached;
+        if (typeof window !== 'undefined' && window.AtexPackagingSize) {
+            packingCached = window.AtexPackagingSize.core;
+            return packingCached;
+        }
+        if (typeof require === 'function') {
+            try { packingCached = require('./packaging-size.js').core; } catch (e) { /* модуль рядом не лежит */ }
+        }
+        return packingCached;
+    }
+
     // #3914: диагностическая трассировка планирования дня. По умолчанию МОЛЧИТ
     // (в Node/тестах window нет). Включить в браузере одним из способов:
     //   • в консоли:  window.PP_TRACE = true   (потом нажать «Сгенерировать»)
@@ -327,7 +348,10 @@
         actual: 'Кол-во факт',
         orderId: 'ID заказа',
         footage: 'Метраж, м',
-        active: 'В работе'
+        active: 'В работе',
+        // #4665: короб и норма укладки — подсказка упаковщику; подбирается по ширине,
+        // длине, фольге и доп. втулке (download/atex/js/packaging-size.js).
+        size: 'Типоразмер'
     };
     // #3242: «Кол-во план» переименовано в «Кол-во резок план» (fallback на старое имя).
     var CUT_PLANNED_RUNS_NAMES = ['Кол-во резок план', 'Кол-во план'];
@@ -467,7 +491,8 @@
             actual: reqIdByName(finishedBatchMeta, FINISHED_BATCH_REQ.actual),
             orderId: reqIdByName(finishedBatchMeta, FINISHED_BATCH_REQ.orderId),
             footage: reqIdByName(finishedBatchMeta, FINISHED_BATCH_REQ.footage),
-            active: activeReqId(finishedBatchMeta)
+            active: activeReqId(finishedBatchMeta),
+            size: reqIdByName(finishedBatchMeta, FINISHED_BATCH_REQ.size)
         };
         return buildFields(reqIds, {
             width: values && values.width,
@@ -477,7 +502,8 @@
             actual: values && values.actual,
             orderId: values && values.orderId,
             footage: values && values.footage,
-            active: values && values.active
+            active: values && values.active,
+            size: values && values.size
         });
     }
 
@@ -1777,7 +1803,12 @@
                 : (no !== '' ? '№' + no : '');
             var dims = positionDimensionsLabel(width, length);
             var label = head + (dims !== '' ? ' · ' + dims : '');
-            return { id: id, label: label, width: width, length: length, qty: qty };
+            var pos = { id: id, label: label, width: width, length: length, qty: qty };
+            // #4665: доп. втулка меняет норму укладки в короб. Ключ добавляем ТОЛЬКО когда
+            // она есть: форма записи позиции — оракул для тестов соседних тикетов.
+            var addSleeve = rowFirstValue(row, ['position_add_sleeve']);
+            if (addSleeve) pos.addSleeve = addSleeve;
+            return pos;
         });
     }
 
@@ -2175,6 +2206,8 @@
     // batchDateKey (для оконного отбора по сроку при генерации); нет срока → Infinity.
     function rowsToGenPositions(rows) {
         return (rows || []).map(function(row) {
+            // #4665: доп. втулка (см. rowsToPositions) — ключ ставится только когда она есть.
+            var addSleeveVal = rowFirstValue(row, ['position_add_sleeve']);
             // Позиция считается согласованной, если утверждён заказ (order_approval_date)
             // ИЛИ утверждена сама позиция (item_approval_date).
             var orderApproved = !!(String(row.order_approval_date || row.order_approved || '').trim());
@@ -2184,7 +2217,7 @@
             var windLengthRaw = (row.wind_length != null && String(row.wind_length).trim() !== '')
                 ? row.wind_length
                 : ((row.position_wind_length != null && String(row.position_wind_length).trim() !== '') ? row.position_wind_length : lengthRaw);
-            return {
+            var genPos = {
                 id: row.position_id == null ? '' : String(row.position_id),
                 materialId: row.position_material_id == null ? '' : String(row.position_material_id),
                 width: stripNum(row.position_width),
@@ -2211,6 +2244,8 @@
                 materialType: rowFirstValue(row, ['position_material_type']),
                 isFoil: /фольг/i.test(rowFirstValue(row, ['position_material_type']))
             };
+            if (addSleeveVal) genPos.addSleeve = addSleeveVal;
+            return genPos;
         });
     }
 
