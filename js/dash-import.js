@@ -322,7 +322,44 @@
         });
     }
 
+    // ── Схема целевой базы ──────────────────────────────────────────────────────────────────
+
+    // Таблицы модели резолвим ПО ИМЕНИ из `metadata` — ids у каждой базы свои (`docs/kb/dashboard.md`).
+    // Чистая: на вход — массив metadata, на выход — схема либо список того, чего не хватает.
+    function resolveSchema(metadata) {
+        var byName = {};
+        (metadata || []).forEach(function (t) {
+            var name = String(t.val || '').trim();
+            // Дублирующиеся имена: берём запись с бо́льшим числом реквизитов — она и есть рабочая.
+            if (!byName[name] || (t.reqs || []).length > (byName[name].reqs || []).length) byName[name] = t;
+        });
+        function id(name) { return byName[name] ? Number(byName[name].id) : null; }
+        function reqId(tableName, reqName) {
+            var t = byName[tableName];
+            if (!t) return null;
+            var q = (t.reqs || []).filter(function (r) { return String(r.val || '').trim() === reqName; })[0];
+            return q ? Number(q.id) : null;
+        }
+        var schema = {
+            dashboard: id('Дэшборд'), sheet: id('Лист'), panel: id('Панель'), row: id('Строка'),
+            rg: id('RG'), rgTypeDict: id('Тип RG'), values: id('Значение'),
+            periodDict: id('Период'), yearTable: id('Год'), budgetRows: id('Строка бюджета'),
+            req: {
+                dashPeriod: reqId('Дэшборд', 'Период'),
+                rowFormula: reqId('Строка', 'Формула_т'), rowLabel: reqId('Строка', 'Метка_т'),
+                rgType: reqId('RG', 'Тип RG'),
+                valDate: reqId('Значение', 'Дата_т'), valRow: reqId('Значение', 'Строка бюджета'),
+                valLabel: reqId('Значение', 'Метка_т')
+            },
+            periodName: 'Год'
+        };
+        schema.missing = ['dashboard', 'sheet', 'panel', 'row', 'rg', 'values']
+            .filter(function (k) { return !schema[k]; });
+        return schema;
+    }
+
     var api = {
+        resolveSchema: resolveSchema,
         recognizeModel: recognizeModel,
         recognizeSheet: recognizeSheet,
         periodHeader: periodHeader,
@@ -337,4 +374,195 @@
 
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof window !== 'undefined') window.DashImport = api;
+
+    // ── Рабочее место ───────────────────────────────────────────────────────────────────────
+    // Ниже — только экран: чтение файла, предпросмотр, запись. Логика распознавания выше и от
+    // DOM не зависит, поэтому её проверяет тест, а не браузер.
+
+    if (typeof document === 'undefined') return;
+    var root = document.getElementById('dash-import');
+    if (!root) return;
+
+    var DB = root.getAttribute('data-db') || '';
+    var XSRF = root.getAttribute('data-xsrf') || '';
+    var state = { model: null, journal: [], fileName: '' };
+
+    function el(id) { return document.getElementById(id); }
+    function status(text, kind) {
+        var box = el('di-status');
+        box.textContent = text || '';
+        box.className = 'di-status' + (kind ? ' di-status-' + kind : '');
+    }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+
+    // Интеграм-API. Ошибка приходит как [{error}] с 4xx — смотрим resp.ok, а не только тело.
+    function api2(path, form) {
+        var opts = { method: form ? 'POST' : 'GET', credentials: 'same-origin' };
+        if (form) { form.append('_xsrf', XSRF); opts.body = form; }
+        return fetch('/' + DB + '/' + path, opts).then(function (resp) {
+            return resp.text().then(function (text) {
+                var data = null;
+                try { data = JSON.parse(text); } catch (e) { data = null; }
+                if (!resp.ok) {
+                    var msg = (data && data[0] && data[0].error) || text.slice(0, 200);
+                    throw new Error(path + ' → ' + resp.status + ' ' + msg);
+                }
+                return data;
+            });
+        });
+    }
+    function createObj(tableId, up, mainValue, fields) {
+        var f = new FormData();
+        f.append('t' + tableId, mainValue == null ? '' : String(mainValue));
+        Object.keys(fields || {}).forEach(function (k) { f.append('t' + k, String(fields[k])); });
+        var path = '_m_new/' + tableId + '?JSON=1' + (up ? '&up=' + up : '');
+        return api2(path, f).then(function (res) {
+            var id = res && (res.id || res.ID || (res[0] && res[0].id));
+            if (!id) throw new Error('создание в таблице ' + tableId + ': ответ без id');
+            return String(id);
+        });
+    }
+
+    // SheetJS подгружаем лениво — он нужен только когда файл выбран (как в upload.html).
+    function withXLSX() {
+        if (window.XLSX) return Promise.resolve(window.XLSX);
+        return new Promise(function (resolve, reject) {
+            var s = document.createElement('script');
+            s.src = '/js/xlsx0.18.5.full.min.js';
+            s.onload = function () { resolve(window.XLSX); };
+            s.onerror = function () { reject(new Error('не загрузилась библиотека чтения xlsx')); };
+            document.head.appendChild(s);
+        });
+    }
+
+    function renderPreview() {
+        var m = state.model;
+        var sheets = m.sheets.length;
+        var panels = m.sheets.reduce(function (a, s) { return a + s.panels.length; }, 0);
+        var rows = m.sheets.reduce(function (a, s) {
+            return a + s.panels.reduce(function (b, p) { return b + p.rows.length; }, 0); }, 0);
+        var values = m.sheets.reduce(function (a, s) {
+            return a + s.panels.reduce(function (b, p) {
+                return b + p.rows.reduce(function (c, r) { return c + Object.keys(r.values).length; }, 0); }, 0); }, 0);
+        el('di-summary').innerHTML =
+            '<b>' + esc(m.name) + '</b> · листов ' + sheets + ' · панелей ' + panels +
+            ' · строк ' + rows + ' · значений ' + values +
+            ' · периоды ' + (m.years[0] || '—') + '…' + (m.years[m.years.length - 1] || '—');
+
+        var html = '';
+        m.sheets.forEach(function (s) {
+            html += '<div class="di-sheet"><div class="di-sheet-name">Лист «' + esc(s.name) + '»</div>';
+            s.panels.forEach(function (p) {
+                html += '<div class="di-panel"><div class="di-panel-name">' + esc(p.title) +
+                        ' <span class="di-dim">строк ' + p.rows.length +
+                        (p.totalCol != null ? ', есть «Итог»' : '') + '</span></div><ul class="di-rows">';
+                p.rows.forEach(function (r) {
+                    html += '<li>' + esc(r.name) +
+                            (r.label ? ' <span class="di-dim">[' + esc(r.label) + ']</span>' : '') +
+                            (r.formula ? ' <span class="di-f">ƒ ' + esc(r.formula) + '</span>' : '') + '</li>';
+                });
+                html += '</ul></div>';
+            });
+            html += '</div>';
+        });
+        el('di-preview').innerHTML = html;
+        el('di-preview-step').hidden = false;
+
+        el('di-journal-count').textContent = state.journal.length ? state.journal.length : '— ничего';
+        el('di-journal-text').value = journalIssueText(state.journal, state.fileName);
+        el('di-journal-step').hidden = false;
+        el('di-create-step').hidden = false;
+    }
+
+    el('di-file').addEventListener('change', function (ev) {
+        var file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        state.fileName = file.name;
+        el('di-file-name').textContent = file.name;
+        status('Читаю файл…');
+        withXLSX().then(function (XLSX) {
+            return file.arrayBuffer().then(function (buf) {
+                var wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+                var res = recognizeModel(file.name, gridsFromWorkbook(XLSX, wb));
+                state.model = res.model; state.journal = res.journal;
+                renderPreview();
+                status('Разобрано. Проверьте структуру — в базу пока ничего не записано.', 'ok');
+            });
+        }).catch(function (e) { status('Не удалось разобрать файл: ' + e.message, 'err'); });
+    });
+
+    el('di-journal-copy').addEventListener('click', function () {
+        var ta = el('di-journal-text');
+        ta.select();
+        try { document.execCommand('copy'); status('Журнал скопирован — вставляйте в issue.', 'ok'); }
+        catch (e) { status('Скопируйте текст журнала вручную.', 'err'); }
+    });
+
+    el('di-create').addEventListener('click', function () {
+        if (!state.model) return;
+        var btn = el('di-create');
+        btn.disabled = true;
+        status('Читаю схему базы…');
+        var schema, dashId, sheetIds = {};
+        api2('metadata?JSON').then(function (meta) {
+            schema = resolveSchema(meta);
+            if (schema.missing.length) throw new Error('в базе нет таблиц модели: ' + schema.missing.join(', '));
+            // Модель с таким именем уже есть? Тогда дописываем в неё (#4704).
+            return api2('object/' + schema.dashboard + '/?JSON_OBJ&LIMIT=0,500');
+        }).then(function (list) {
+            var found = (list || []).filter(function (r) {
+                return String(r.r && r.r[0]).trim() === state.model.name; })[0];
+            if (found) { dashId = String(found.i); status('Модель найдена — дописываю листы…'); return null; }
+            status('Создаю модель…');
+            var fields = {};
+            if (schema.req.dashPeriod && schema.periodDict) fields[schema.req.dashPeriod] = 'Год';
+            return createObj(schema.dashboard, null, state.model.name, fields).then(function (id) { dashId = id; });
+        }).then(function () {
+            // Листы: одноимённый переиспользуем, новый создаём.
+            return api2('object/' + schema.sheet + '/?JSON_OBJ&LIMIT=0,500&up=' + dashId).then(function (list) {
+                (list || []).forEach(function (r) { sheetIds[String(r.r && r.r[0]).trim()] = String(r.i); });
+            }).catch(function () { /* подчинённых ещё нет */ });
+        }).then(function () {
+            var chain = Promise.resolve(), created = { sheets: 0, panels: 0, rows: 0, values: 0 };
+            state.model.sheets.forEach(function (sheet) {
+                chain = chain.then(function () {
+                    if (sheetIds[sheet.name]) return sheetIds[sheet.name];
+                    created.sheets++;
+                    return createObj(schema.sheet, dashId, sheet.name, {});
+                }).then(function (sheetId) {
+                    var inner = Promise.resolve();
+                    sheet.panels.forEach(function (panel) {
+                        inner = inner.then(function () {
+                            created.panels++;
+                            return createObj(schema.panel, sheetId, panel.title, {});
+                        }).then(function (panelId) {
+                            var rowsChain = Promise.resolve();
+                            panel.rows.forEach(function (row) {
+                                rowsChain = rowsChain.then(function () {
+                                    created.rows++;
+                                    var f = {};
+                                    if (schema.req.rowFormula && row.formula) f[schema.req.rowFormula] = row.formula;
+                                    if (schema.req.rowLabel && row.label) f[schema.req.rowLabel] = row.label;
+                                    return createObj(schema.row, panelId, row.name, f);
+                                });
+                            });
+                            return rowsChain;
+                        });
+                    });
+                    return inner;
+                });
+            });
+            return chain.then(function () { return created; });
+        }).then(function (created) {
+            status('Готово: листов ' + created.sheets + ', панелей ' + created.panels +
+                   ', строк ' + created.rows + '. Модель: ' + state.model.name +
+                   ' (dash/' + dashId + ').', 'ok');
+            el('di-target').innerHTML = '<a href="/' + DB + '/dash/' + dashId + '" target="_blank">Открыть модель</a>';
+            btn.disabled = false;
+        }).catch(function (e) {
+            status('Запись прервана: ' + e.message + '. Что успело создаться — осталось в базе.', 'err');
+            btn.disabled = false;
+        });
+    });
 })();
