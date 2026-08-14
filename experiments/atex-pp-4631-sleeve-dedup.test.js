@@ -128,7 +128,13 @@ function kept(r, tasks) {
     // его отдельно, а вызовов обязано быть ДВА: генерация и удаление задания.
     var calls = (src.match(/self\.reconcileSleeveTasks\(/g) || []).length;
     assert(/prototype\.reconcileSleeveTasks = function/.test(src), 'I: reconcileSleeveTasks определён');
-    assert(calls === 2, 'I2: вызван из ОБОИХ путей — генерация и удаление задания', 'вызовов: ' + calls);
+    // #4753 (RATCHET-OK): путей ТРИ, а не два — генерация, удаление ЗАДАНИЯ и удаление ДНЯ.
+    // Прежнее «=== 2» закрепляло состояние, в котором путь дня остался недоведённым: он собирал
+    // `sleevePositionIds` и не звал разбор вовсе, а сам вызов стоял в соседней функции, где
+    // переменной не существовало (ReferenceError на каждом удалении, issue #4753). Число здесь
+    // фиксировало дефект, поэтому ожидание обновлено вместе с его починкой.
+    assert(calls === 3, 'I2: вызван из ВСЕХ трёх путей — генерация, удаление задания, удаление дня',
+        'вызовов: ' + calls);
     assert(/runGenerateCuts[\s\S]*?self\.reconcileSleeveTasks\(genPositionIds\)/.test(src)
         || /genPositionIds[\s\S]{0,200}reconcileSleeveTasks\(genPositionIds\)/.test(src),
         'I3: генерация сверяет набор ПОСЛЕ reload (нужны свежие «Обеспечения»)');
