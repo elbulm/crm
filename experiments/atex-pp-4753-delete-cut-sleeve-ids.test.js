@@ -22,7 +22,11 @@
 //   C — позиции собраны ДО удаления (после него связь потеряна) и без дублей;
 //   D — удаление ДНЯ (второй путь) продолжает работать так же;
 //   E — записи действительно удалены: обеспечения и вся цепочка;
-//   F — нет `reconcileSleeveTasks` (стаб-self старых тестов) — удаление всё равно доходит до конца.
+//   F — нет `reconcileSleeveTasks` (стаб-self старых тестов) — удаление всё равно доходит до конца;
+//   G/H — #4325 «Нельзя удалять начатые задания»: правило соблюдается обоими путями. Оно уже
+//         работало (#4381), но держалось НЕ ТАМ, где исполняется: у одиночного пути — во входной
+//         `deleteCutTask`, у дня — в отборе целей `dayDeletionTargets`, а сами исполнители его не
+//         перепроверяют. Ровно такое расхождение слоёв и дало #4753, поэтому правило закреплено.
 //
 // Run with: node experiments/atex-pp-4753-delete-cut-sleeve-ids.test.js
 
@@ -131,6 +135,34 @@ guard('удаление задания', function() {
             'F. без reconcileSleeveTasks (стаб старых тестов) удаление всё равно доходит до конца',
             failures.slice(before).join('; '));
     });
+}).then(function() {
+    // ── G/H. #4325: НАЧАТОЕ ЗАДАНИЕ НЕ УДАЛЯЕТСЯ — ни поштучно, ни в составе дня ─────────────
+    // Правило соблюдается, но держится НЕ ТАМ, где исполняется: у одиночного пути — во входной
+    // `deleteCutTask` (#4381), у дня — в отборе целей `dayDeletionTargets`. Сами исполнители
+    // (`runDeleteCutTask` / `runDeleteDayTasks`) его не перепроверяют. #4753 показал, чем такое
+    // расхождение слоёв кончается, поэтому правило закрепляется тестом: тихо потерять его нельзя.
+    var P = require('../download/atex/js/production-planning.js').planning;
+    var startedCut = { id: '200', planDate: '1786608000', status: 'В работе',
+                       startDate: '1786608000', fixed: false };
+    var freeCut = { id: '201', planDate: '1786608000', status: '', startDate: '', fixed: false };
+    var sup = [{ id: 'X1', cutId: '200' }, { id: 'X2', cutId: '201' }];
+    var targets = P.dayDeletionTargets([startedCut, freeCut], sup, '2026-08-13', '2026-08-13');
+    var ids = targets.cuts.map(function(c) { return String(c.id); });
+    assert(ids.indexOf('200') < 0 && ids.indexOf('201') >= 0,
+        'G. #4325: удаление ДНЯ не берёт начатое задание, а свободное берёт',
+        'к удалению: ' + JSON.stringify(ids));
+    assert(targets.supplies.map(function(s) { return String(s.cutId); }).indexOf('200') < 0,
+        'G2. и обеспечения начатого не уносит',
+        JSON.stringify(targets.supplies.map(function(s) { return s.cutId; })));
+
+    var one = stand();
+    one.cuts = [startedCut];
+    one.deleteCutTask(startedCut, null);
+    assert(one.deleted.length === 0
+           && one.notices.some(function(n) { return n.kind === 'error' && /начат/i.test(n.msg); }),
+        'H. #4325: удаление ОДНОГО начатого задания отклонено с объяснением, ни одной записи не снесено',
+        'удалено: ' + JSON.stringify(one.deleted)
+            + ', сказано: ' + JSON.stringify(one.notices.map(function(n) { return n.msg; })));
 }).then(function() {
     console.log('\n' + passed + '/' + total + ' проверок прошло');
     if (passed !== total) process.exitCode = 1;
