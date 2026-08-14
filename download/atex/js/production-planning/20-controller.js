@@ -5280,6 +5280,25 @@
     // «Обеспечение» (они ссылаются на «Партии ГП» — подчинённые резки; пока ссылки живы,
     // _m_del резки вернёт 409, см. DeleteTreeRefsCount в index.php), затем сами резки —
     // backend каскадом (BatchDelete) сносит подчинённые Партии ГП/Полосы/Расход сырья.
+    // #4631/#4753: ПОЗИЦИИ УДАЛЯЕМЫХ ЗВЕНЬЕВ — ОДНОЙ ФУНКЦИЕЙ НА ОБА ПУТИ УДАЛЕНИЯ.
+    // «Задачи на втулки» подчинены ПОЗИЦИИ, а не заданию, поэтому после удаления связь потеряна и
+    // сверять набор уже не с чем — собираем ДО. Путей удаления два (день и задание), и правило
+    // #4631 дописали в оба, но каждый со своей переменной: в дне обращались к `cutList` (его там
+    // нет — набор называется `cutIds`), в задании — к `sleevePositionIds` (её там не объявляли
+    // вовсе). Оба пути падали `ReferenceError` (issue #4753). Теперь сбор ОДИН, и разъехаться
+    // ему негде.
+    //   cutIds — id удаляемых записей цепочки. → [positionId…] без дублей.
+    function collectSleevePositionIds(self, cutIds) {
+        var ids = (cutIds || []).map(String);
+        var out = [];
+        ((self && self.supplies) || []).forEach(function(sup) {
+            if (!sup || sup.cutId == null || ids.indexOf(String(sup.cutId)) < 0) return;
+            var pid = String(sup.positionId == null ? '' : sup.positionId);
+            if (pid && out.indexOf(pid) === -1) out.push(pid);
+        });
+        return out;
+    }
+
     AtexProductionPlanning.prototype.runDeleteDayTasks = function(cuts, supplies, dateLabel) {
         var self = this;
         if (this.busy) return;
@@ -5302,12 +5321,10 @@
         var MAX_PARALLEL_DELETES = MAX_PARALLEL_WRITES;   // #4477: предел один на весь модуль
         // #4631: позиции удаляемых звеньев запоминаем ДО удаления — после него связь потеряна, и
         // сверить набор «Задач на втулки» будет уже не с чем.
-        var sleevePositionIds = [];
-        (self.supplies || []).forEach(function(sup) {
-            if (!sup || sup.cutId == null || cutList.indexOf(String(sup.cutId)) < 0) return;
-            var pid = String(sup.positionId == null ? '' : sup.positionId);
-            if (pid && sleevePositionIds.indexOf(pid) === -1) sleevePositionIds.push(pid);
-        });
+        // #4753: набор удаляемых записей здесь называется `cutIds` — `cutList` живёт в СОСЕДНЕЙ
+        // функции (`runDeleteCutTask`), и обращение к нему роняло удаление дня `ReferenceError`
+        // ещё ДО первого запроса: оператор получал ошибку, а день оставался нетронутым.
+        var sleevePositionIds = collectSleevePositionIds(self, cutIds);
         function del(id) {
             return self.post('_m_del/' + encodeURIComponent(id) + '?JSON', {}).then(function() {
                 self.updateProgress(++done);
@@ -5318,10 +5335,18 @@
         }
         // Фаза 1 — обеспечения (пул), барьер, Фаза 2 — резки (пул). Барьер снимает ссылки
         // Обеспечений на Партии ГП до удаления резок → 409 исключён.
-        runWithConcurrency(delTasks(supplyIds), MAX_PARALLEL_DELETES).then(function() {
+        // #4753: цепочку ВОЗВРАЩАЕМ — как и в пути задания, иначе конца удаления не дождаться.
+        return runWithConcurrency(delTasks(supplyIds), MAX_PARALLEL_DELETES).then(function() {
             return runWithConcurrency(delTasks(cutIds), MAX_PARALLEL_DELETES);
         }).then(function() {
             return self.reload();
+        }).then(function() {
+            // #4631/#4753: задания ушли — «Задачи на втулки» их позиций приводим к оставшемуся
+            // плану. Здесь этого вызова НЕ БЫЛО: день собирал `sleevePositionIds` и не делал с
+            // ними ничего, а сам вызов стоял в СОСЕДНЕЙ функции, где переменной не существовало.
+            // typeof-гард — как во втором пути: в юнит-тестах `self` бывает стабом без прототипа.
+            if (typeof self.reconcileSleeveTasks !== 'function') return null;
+            return self.reconcileSleeveTasks(sleevePositionIds);
         }).then(function() {
             self.hideProgress();
             self.setBusy(false);
@@ -5443,8 +5468,15 @@
             });
         }
         var supplyTasks = ids.map(function(id) { return function() { return del(id); }; });
+        // #4631/#4753: позиции удаляемых звеньев — ДО удаления, тем же сбором, что и путь дня.
+        // Прежде эта строка отсутствовала, а хвост звал `reconcileSleeveTasks(sleevePositionIds)` —
+        // `ReferenceError` на КАЖДОМ удалении задания, причём уже ПОСЛЕ сноса записей: обеспечения
+        // и резки удалены, а `reload`/`render` и разбор втулок не выполнены (issue #4753).
+        var sleevePositionIds = collectSleevePositionIds(self, cutList);
         // Фаза 1 — обеспечения (пул), барьер, Фаза 2 — записи цепочки (хвост → голова).
-        runWithConcurrency(supplyTasks, MAX_PARALLEL_DELETES).then(function() {
+        // #4753: цепочку ВОЗВРАЩАЕМ — без этого вызывающий не может дождаться конца удаления, а
+        // тест не может его проверить (ошибка и жила незамеченной именно поэтому).
+        return runWithConcurrency(supplyTasks, MAX_PARALLEL_DELETES).then(function() {
             return cutList.slice().reverse().reduce(function(p, id) {
                 return p.then(function() { return del(id); });
             }, Promise.resolve());
