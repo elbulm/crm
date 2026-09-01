@@ -1,0 +1,47 @@
+{
+  "mappings": [
+    {"role":"Наименование","rfp":"Наименование","sku":"Название","confidence":99},
+    {"role":"Артикул","rfp":"Код производителя","sku":"Артикул","confidence":97},
+    {"role":"Производитель","rfp":"Бренд","sku":"Производитель","confidence":94},
+    {"role":"Цена","rfp":"Предельная цена","sku":"Цена, руб.","confidence":91}
+  ],
+  "files": {
+    "rfp": {
+      "filename":"Заявка_на_оборудование.xlsx",
+      "sheet":"Закупка",
+      "columns":["ID","Наименование","Код производителя","Бренд","Количество","Предельная цена"],
+      "rows":[
+        {"ID":"RFP-001","Наименование":"Ноутбук Lenovo ThinkPad E14 Gen 5, 16 ГБ","Код производителя":"21JK000XRU","Бренд":"Lenovo","Количество":8,"Предельная цена":95000},
+        {"ID":"RFP-002","Наименование":"Картридж HP 85A CE285A","Код производителя":"CE285A","Бренд":"HP","Количество":20,"Предельная цена":8000},
+        {"ID":"RFP-003","Наименование":"Монитор 27″ QHD с USB-C","Код производителя":"","Бренд":"","Количество":12,"Предельная цена":42000},
+        {"ID":"RFP-004","Наименование":"Беспроводная мышь Logitech M185","Код производителя":"910-002235","Бренд":"Logitech","Количество":30,"Предельная цена":1700},
+        {"ID":"RFP-005","Наименование":"Переходник USB-C на HDMI","Код производителя":"","Бренд":"","Количество":10,"Предельная цена":2500}
+      ]
+    },
+    "sku": {
+      "filename":"Прайс_поставщика.xlsx",
+      "sheet":"Каталог",
+      "columns":["SKU","Название","Артикул","Производитель","Цена, руб.","Остаток"],
+      "rows":[
+        {"SKU":"SKU-101","Название":"Lenovo ThinkPad E14 Gen 5 21JK000XRU","Артикул":"21JK000XRU","Производитель":"Lenovo","Цена, руб.":89900,"Остаток":14},
+        {"SKU":"SKU-204","Название":"HP LaserJet 85A Black CE285A","Артикул":"CE285A","Производитель":"HP","Цена, руб.":7350,"Остаток":62},
+        {"SKU":"SKU-310","Название":"Dell P2723DE 27 QHD USB-C","Артикул":"P2723DE","Производитель":"Dell","Цена, руб.":39800,"Остаток":18},
+        {"SKU":"SKU-311","Название":"LG 27QN880-B Ergo QHD USB-C","Артикул":"27QN880-B","Производитель":"LG","Цена, руб.":41500,"Остаток":9},
+        {"SKU":"SKU-402","Название":"Logitech Wireless Mouse M185 Grey","Артикул":"910-002235","Производитель":"Logitech","Цена, руб.":1390,"Остаток":140},
+        {"SKU":"SKU-501","Название":"Cablexpert USB-C to DisplayPort 4K","Артикул":"A-CM-DPF-02","Производитель":"Cablexpert","Цена, руб.":1890,"Остаток":45}
+      ]
+    }
+  },
+  "results": [
+    {"sourceId":"RFP-001","source":"Ноутбук Lenovo ThinkPad E14 Gen 5, 16 ГБ","targetId":"SKU-101","target":"Lenovo ThinkPad E14 Gen 5 21JK000XRU","accuracy":98,"status":"matched","price":89900},
+    {"sourceId":"RFP-002","source":"Картридж HP 85A CE285A","targetId":"SKU-204","target":"HP LaserJet 85A Black CE285A","accuracy":96,"status":"matched","price":7350},
+    {"sourceId":"RFP-003","source":"Монитор 27″ QHD с USB-C","targetId":"SKU-310","target":"Dell P2723DE 27 QHD USB-C","accuracy":68,"status":"review","price":39800},
+    {"sourceId":"RFP-004","source":"Беспроводная мышь Logitech M185","targetId":"SKU-402","target":"Logitech Wireless Mouse M185 Grey","accuracy":94,"status":"matched","price":1390},
+    {"sourceId":"RFP-005","source":"Переходник USB-C на HDMI","targetId":null,"target":"Подходящий товар не найден","accuracy":0,"status":"empty","price":null}
+  ],
+  "candidates": [
+    {"id":"SKU-310","name":"Dell P2723DE 27 QHD USB-C","brand":"Dell","price":39800,"accuracy":68,"details":"2560 × 1440 · USB-C 90 Вт · DisplayPort · LAN","recommended":true},
+    {"id":"SKU-311","name":"LG 27QN880-B Ergo QHD USB-C","brand":"LG","price":41500,"accuracy":64,"details":"2560 × 1440 · USB-C 60 Вт · регулируемый кронштейн","recommended":false},
+    {"id":"SKU-315","name":"AOC Q27P2Q 27 QHD","brand":"AOC","price":31900,"accuracy":41,"details":"2560 × 1440 · без USB-C · HDMI · DisplayPort","recommended":false}
+  ]
+}

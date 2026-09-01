@@ -1,0 +1,15 @@
+{
+  "format": "integram-xcom-matching",
+  "version": 1,
+  "demo": true,
+  "database": "demo",
+  "report": "matching_export",
+  "count": 5,
+  "rows": [
+    {"sourceId":"RFP-001","source":"Ноутбук Lenovo ThinkPad E14 Gen 5, 16 ГБ","targetId":"SKU-101","target":"Lenovo ThinkPad E14 Gen 5 21JK000XRU","accuracy":98,"status":"matched","price":89900},
+    {"sourceId":"RFP-002","source":"Картридж HP 85A CE285A","targetId":"SKU-204","target":"HP LaserJet 85A Black CE285A","accuracy":96,"status":"matched","price":7350},
+    {"sourceId":"RFP-003","source":"Монитор 27″ QHD с USB-C","targetId":"SKU-310","target":"Dell P2723DE 27 QHD USB-C","accuracy":68,"status":"review","price":39800},
+    {"sourceId":"RFP-004","source":"Беспроводная мышь Logitech M185","targetId":"SKU-402","target":"Logitech Wireless Mouse M185 Grey","accuracy":94,"status":"matched","price":1390},
+    {"sourceId":"RFP-005","source":"Переходник USB-C на HDMI","targetId":null,"target":"Подходящий товар не найден","accuracy":0,"status":"empty","price":null}
+  ]
+}
