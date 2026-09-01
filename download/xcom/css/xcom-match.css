@@ -32,6 +32,77 @@
     gap: 1rem;
 }
 
+.xcom-match-reviewbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color, oklch(88% 0.018 255));
+    background: var(--bg-secondary, oklch(96% 0.012 255));
+}
+
+.xcom-match-reviewbar > span {
+    color: var(--text-secondary, oklch(52% 0.03 255));
+    font-size: 0.8rem;
+}
+
+.xcom-match-decision-actions {
+    display: flex;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.xcom-match-decision {
+    min-height: 28px;
+    padding: 3px 7px;
+    border: 1px solid var(--border-color, oklch(84% 0.022 255));
+    border-radius: 5px;
+    background: var(--card-bg, oklch(99% 0.006 255));
+    color: var(--text-primary, oklch(28% 0.025 255));
+    font: inherit;
+    font-size: 0.76rem;
+    cursor: pointer;
+}
+
+.xcom-match-decision[data-decision="accept"] {
+    border-color: var(--success, oklch(53% 0.14 145));
+    color: var(--success, oklch(43% 0.14 145));
+}
+
+.xcom-match-decision[data-decision="reject"] {
+    border-color: var(--danger, oklch(55% 0.17 25));
+    color: var(--danger, oklch(47% 0.17 25));
+}
+
+.xcom-match-decision:focus-visible,
+.xcom-match-history summary:focus-visible {
+    outline: 2px solid var(--button-primary, oklch(55% 0.2 255));
+    outline-offset: 2px;
+}
+
+.xcom-match-history {
+    padding: 9px 12px;
+    border-top: 1px solid var(--border-color, oklch(88% 0.018 255));
+    color: var(--text-secondary, oklch(52% 0.03 255));
+    font-size: 0.8rem;
+}
+
+.xcom-match-history summary {
+    cursor: pointer;
+    font-weight: 650;
+}
+
+.xcom-match-history-list {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.xcom-match-history-list li {
+    padding: 6px 0;
+    border-top: 1px solid var(--border-color, oklch(90% 0.015 255));
+}
+
 .xcom-match-search-head h1,
 .xcom-match-pane-head h2 {
     margin: 0;

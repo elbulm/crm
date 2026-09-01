@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/download/{_global_.z}/css/xcom-match.css?1{_global_.version}">
+<link rel="stylesheet" href="/download/{_global_.z}/css/xcom-match.css?{_global_.version}.2">
 
 <div id="xcom-match-app"
      class="xcom-match"
@@ -52,11 +52,22 @@
                     <span id="xcom-match-report-summary" class="xcom-match-summary">Выберите RFP из списка</span>
                 </div>
             </div>
+            <div class="xcom-match-reviewbar" aria-label="Проверка спорных пар">
+                <button id="xcom-match-llm-refine" class="xcom-match-btn xcom-match-btn-secondary" type="button" disabled>
+                    <i class="pi pi-sparkles"></i><span>Доуточнить серую зону</span>
+                </button>
+                <span id="xcom-match-review-status" role="status" aria-live="polite">Выберите строку RFP.</span>
+            </div>
             <div id="xcom-match-report-results" class="xcom-match-table-wrap">
                 <div class="xcom-match-empty">Выберите строку RFP слева, чтобы подобрать сопоставление.</div>
             </div>
+            <details id="xcom-match-history" class="xcom-match-history">
+                <summary>История решений по этой позиции</summary>
+                <div id="xcom-match-history-list">Решений пока нет.</div>
+            </details>
         </section>
     </div>
 </div>
 
-<script src="/download/{_global_.z}/js/xcom-match.js?1{_global_.version}" defer></script>
+<script src="/download/{_global_.z}/js/xcom-match.js?{_global_.version}.2" defer></script>
+<script src="/download/{_global_.z}/js/xcom-review.js?{_global_.version}.1" defer></script>

@@ -10,7 +10,7 @@
 }
 
 .xcom-settings-panel {
-    background: var(--background, #fff);
+    background: var(--background, oklch(99% 0.006 255));
     border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 10px;
     padding: 20px 24px;
@@ -33,6 +33,25 @@
     gap: 16px;
 }
 
+.xcom-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.xcom-settings-grid label,
+.xcom-settings-weight {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.9rem;
+}
+
+.xcom-settings-grid-compact {
+    max-width: 360px;
+    margin-top: 12px;
+}
+
 .xcom-settings-weight {
     display: flex;
     flex-direction: column;
@@ -46,8 +65,14 @@
     border: 1px solid rgba(0, 0, 0, 0.2);
     border-radius: 6px;
     font: inherit;
-    background: var(--background, #fff);
+    background: var(--background, oklch(99% 0.006 255));
     color: inherit;
+}
+
+.xcom-settings-input:focus-visible,
+.xcom-settings-btn:focus-visible {
+    outline: 2px solid var(--button-primary, oklch(55% 0.2 255));
+    outline-offset: 2px;
 }
 
 .xcom-settings-attrs {
@@ -74,6 +99,25 @@
     margin-bottom: 8px;
 }
 
+.xcom-settings-weight-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) 90px auto;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.xcom-settings-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+.xcom-settings-check input {
+    margin-top: 3px;
+}
+
 .xcom-settings-attr .xcom-settings-input {
     flex: 1 1 45%;
 }
@@ -96,8 +140,8 @@
 }
 
 .xcom-settings-btn-primary {
-    background: #2563eb;
-    color: #fff;
+    background: var(--button-primary, oklch(55% 0.2 255));
+    color: oklch(98% 0.005 255);
 }
 
 .xcom-settings-btn-primary:disabled {
@@ -129,4 +173,26 @@
 
 .xcom-settings-status-error {
     color: #b91c1c;
+}
+
+@media (max-width: 680px) {
+    .xcom-settings-grid,
+    .xcom-settings-weight-row {
+        grid-template-columns: 1fr;
+    }
+
+    .xcom-settings-attr {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .xcom-settings-attr-sep {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .xcom-settings * {
+        scroll-behavior: auto !important;
+    }
 }

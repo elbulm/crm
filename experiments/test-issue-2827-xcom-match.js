@@ -12,13 +12,13 @@ const scriptPath = path.join(root, 'download', 'xcom', 'js', 'xcom-match.js');
 const stylePath = path.join(root, 'download', 'xcom', 'css', 'xcom-match.css');
 const updateConfPath = path.join(root, 'update.conf');
 
-assert(fs.existsSync(templatePath), 'templates/xcom/match.html exists');
+assert(fs.existsSync(templatePath), 'templates/xcom/matching.html exists');
 assert(fs.existsSync(scriptPath), 'download/xcom/js/xcom-match.js exists');
 assert(fs.existsSync(stylePath), 'download/xcom/css/xcom-match.css exists');
 
 const template = fs.readFileSync(templatePath, 'utf8');
-assert(template.includes('/download/{_global_.z}/css/xcom-match.css?1{_global_.version}'), 'template loads versioned CSS from download');
-assert(template.includes('/download/{_global_.z}/js/xcom-match.js?1{_global_.version}'), 'template loads versioned JS from download');
+assert(template.includes('/download/{_global_.z}/css/xcom-match.css?{_global_.version}.2'), 'template loads versioned CSS from download');
+assert(template.includes('/download/{_global_.z}/js/xcom-match.js?{_global_.version}.2'), 'template loads versioned JS from download');
 assert(!/<script\b(?![^>]*\bsrc=)/i.test(template), 'template does not contain inline scripts');
 assert(!/<style\b/i.test(template), 'template does not contain inline styles');
 

@@ -54,8 +54,15 @@
     var SETTINGS_TABLE_NAME = 'Настройка сопоставления';
     var SETTINGS_CONFIG_KEY = 'config';
     var MATCH_CONFIG_DEFAULTS = {
+        schema_version: 1,
+        category: '',
+        preset: '',
         tma_weight: 0.5,          // прежняя константа TMA_WEIGHT — теперь дефолт конфига
-        required_attributes: []   // по умолчанию гейта нет — поведение до #4817 сохранено
+        attribute_weights: [],    // мягкие бонусы совпавшим атрибутам категории
+        required_attributes: [], // по умолчанию гейта нет — поведение до #4817 сохранено
+        column_mapping: { rfp: {}, sku: {} },
+        llm: { enabled: false, gray_zone_min: 45, gray_zone_max: 75 },
+        decision_log: { enabled: true, table_name: 'Решение по паре' }
     };
 
     var state = {
@@ -73,7 +80,7 @@
         skuArticleKey: DEFAULT_SKU_ARTICLE_KEY,
         tokensKey: DEFAULT_TOKENS_KEY,
         tmaKey: DEFAULT_TMA_KEY,
-        matchConfig: { tma_weight: MATCH_CONFIG_DEFAULTS.tma_weight, required_attributes: MATCH_CONFIG_DEFAULTS.required_attributes },
+        matchConfig: mergeMatchingConfig(MATCH_CONFIG_DEFAULTS, null),
         names: {},
         fields: {},          // { rfpName, our, candidates, accuracy } -> { id, index }
         columns: [],
@@ -88,6 +95,7 @@
         startTime: 0,       // Date.now() начала прогона
         endTime: 0,         // Date.now() конца прогона (0 — пока идёт)
         timer: null,        // id setInterval живого таймера
+        decisionIndex: {},  // ручные решения по RFP: accepted + rejected, загружаются до прогона
         // issue #3527: авто-регулировка числа потоков по скорости пачки
         autoConcurrency: true, // вкл/выкл авто-регулировку (по умолчанию вкл)
         prevSpeed: null,    // скорость (строк/сек) предыдущей пачки — база для оценки ПАДЕНИЯ
@@ -187,7 +195,11 @@
             return ['конфиг должен быть JSON-объектом'];
         }
         var errors = [];
-        var known = { tma_weight: true, required_attributes: true };
+        var known = {
+            schema_version: true, category: true, preset: true, tma_weight: true,
+            attribute_weights: true, required_attributes: true, column_mapping: true,
+            llm: true, decision_log: true
+        };
         Object.keys(config).forEach(function(key) {
             if (!known[key]) errors.push('неизвестное поле «' + key + '» (проверьте опечатки)');
         });
@@ -197,6 +209,15 @@
                 errors.push('tma_weight должен быть числом 0..1 (доля вклада точного совпадения артикула)');
             }
         }
+        if (Object.prototype.hasOwnProperty.call(config, 'schema_version') &&
+            (!Number.isInteger(config.schema_version) || config.schema_version < 1)) {
+            errors.push('schema_version должен быть положительным целым числом');
+        }
+        ['category', 'preset'].forEach(function(key) {
+            if (Object.prototype.hasOwnProperty.call(config, key) && typeof config[key] !== 'string') {
+                errors.push(key + ' должен быть строкой');
+            }
+        });
         if (Object.prototype.hasOwnProperty.call(config, 'required_attributes')) {
             var attrs = config.required_attributes;
             if (!Array.isArray(attrs)) {
@@ -212,20 +233,103 @@
                 });
             }
         }
+        if (Object.prototype.hasOwnProperty.call(config, 'attribute_weights')) {
+            var weights = config.attribute_weights;
+            if (!Array.isArray(weights)) {
+                errors.push('attribute_weights должен быть списком');
+            } else {
+                weights.forEach(function(attr, index) {
+                    var ok = attr && typeof attr === 'object' && !Array.isArray(attr) &&
+                        typeof attr.rfp_key === 'string' && attr.rfp_key.trim() &&
+                        typeof attr.sku_key === 'string' && attr.sku_key.trim() &&
+                        typeof attr.weight === 'number' && isFinite(attr.weight) && attr.weight >= 0 && attr.weight <= 1;
+                    if (!ok) errors.push('attribute_weights[' + index + ']: нужны rfp_key, sku_key и weight 0..1');
+                });
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(config, 'column_mapping')) {
+            var mapping = config.column_mapping;
+            if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) {
+                errors.push('column_mapping должен быть объектом');
+            } else {
+                Object.keys(mapping).forEach(function(side) {
+                    if (side !== 'rfp' && side !== 'sku') errors.push('column_mapping: неизвестная сторона «' + side + '»');
+                    if (!mapping[side] || typeof mapping[side] !== 'object' || Array.isArray(mapping[side])) {
+                        errors.push('column_mapping.' + side + ' должен быть объектом');
+                    }
+                });
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(config, 'llm')) {
+            var llm = config.llm;
+            if (!llm || typeof llm !== 'object' || Array.isArray(llm)) {
+                errors.push('llm должен быть объектом');
+            } else {
+                var llmKnown = { enabled: true, gray_zone_min: true, gray_zone_max: true };
+                Object.keys(llm).forEach(function(key) {
+                    if (!llmKnown[key]) errors.push('llm: неизвестное поле «' + key + '»');
+                });
+                if (Object.prototype.hasOwnProperty.call(llm, 'enabled') && typeof llm.enabled !== 'boolean') {
+                    errors.push('llm.enabled должен быть true или false');
+                }
+                ['gray_zone_min', 'gray_zone_max'].forEach(function(key) {
+                    if (Object.prototype.hasOwnProperty.call(llm, key) &&
+                        (typeof llm[key] !== 'number' || !isFinite(llm[key]) || llm[key] < 0 || llm[key] > 100)) {
+                        errors.push('llm.' + key + ' должен быть числом 0..100');
+                    }
+                });
+                if (typeof llm.gray_zone_min === 'number' && typeof llm.gray_zone_max === 'number' &&
+                    llm.gray_zone_min > llm.gray_zone_max) {
+                    errors.push('llm.gray_zone_min не может быть больше gray_zone_max');
+                }
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(config, 'decision_log')) {
+            var log = config.decision_log;
+            if (!log || typeof log !== 'object' || Array.isArray(log)) {
+                errors.push('decision_log должен быть объектом');
+            } else {
+                var logKnown = { enabled: true, table_name: true };
+                Object.keys(log).forEach(function(key) {
+                    if (!logKnown[key]) errors.push('decision_log: неизвестное поле «' + key + '»');
+                });
+                if (Object.prototype.hasOwnProperty.call(log, 'enabled') && typeof log.enabled !== 'boolean') {
+                    errors.push('decision_log.enabled должен быть true или false');
+                }
+                if (Object.prototype.hasOwnProperty.call(log, 'table_name') &&
+                    (typeof log.table_name !== 'string' || !log.table_name.trim())) {
+                    errors.push('decision_log.table_name должен быть непустой строкой');
+                }
+            }
+        }
         return errors;
     }
 
     // База + переопределение (ключ не задан в override — остаётся от базы). Всегда свежий
     // объект: state.matchConfig нельзя делить ссылкой с дефолтом.
     function mergeMatchingConfig(base, override) {
-        return {
-            tma_weight: (override && typeof override.tma_weight === 'number' && isFinite(override.tma_weight))
-                ? override.tma_weight
-                : base.tma_weight,
-            required_attributes: (override && Array.isArray(override.required_attributes))
-                ? override.required_attributes
-                : base.required_attributes
-        };
+        function clone(value) {
+            if (Array.isArray(value)) return value.map(clone);
+            if (value && typeof value === 'object') {
+                var out = {};
+                Object.keys(value).forEach(function(key) { out[key] = clone(value[key]); });
+                return out;
+            }
+            return value;
+        }
+        function mergeObject(target, source) {
+            Object.keys(source || {}).forEach(function(key) {
+                var value = source[key];
+                if (value && typeof value === 'object' && !Array.isArray(value) &&
+                    target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+                    mergeObject(target[key], value);
+                } else {
+                    target[key] = clone(value);
+                }
+            });
+            return target;
+        }
+        return mergeObject(clone(base || {}), override || {});
     }
 
     // Применить источник конфига к дефолтам: невалидный источник целиком отклоняется
@@ -252,6 +356,21 @@
             if (rfp && sku && rfp !== sku) return false;
         }
         return true;
+    }
+
+    // Мягкие веса атрибутов не отбрасывают кандидата: каждое подтверждённое совпадение
+    // закрывает заданную долю оставшегося до 100 разрыва. Жёсткие ограничения по-прежнему
+    // живут только в required_attributes, поэтому смысл двух настроек не смешивается.
+    function applyAttributeWeights(baseAccuracy, row, rules) {
+        var score = Math.max(0, Math.min(100, Number(baseAccuracy) || 0));
+        var matchedWeight = 0;
+        (rules || []).forEach(function(rule) {
+            var rfp = normalizeName(row && row[rule.rfp_key]);
+            var sku = normalizeName(row && row[rule.sku_key]);
+            if (rfp && sku && rfp === sku) matchedWeight += Number(rule.weight) || 0;
+        });
+        matchedWeight = Math.max(0, Math.min(1, matchedWeight));
+        return Math.round(score + (100 - score) * matchedWeight);
     }
 
     // --- Метаданные таблицы RFP ---------------------------------------------
@@ -503,7 +622,8 @@
                 label: label || id,
                 article: article,   // показываем в таблице вместо ID (issue #3532); потерян при merge #3536, восстановлен в #3537
                 tokens: state.tokensKey && row[state.tokensKey] != null ? trimValue(row[state.tokensKey]) : '',
-                tma: state.tmaKey && row[state.tmaKey] != null ? trimValue(row[state.tmaKey]) : ''
+                tma: state.tmaKey && row[state.tmaKey] != null ? trimValue(row[state.tmaKey]) : '',
+                source: row
             };
         }
 
@@ -526,6 +646,69 @@
             candidates: candidates,
             tokens: our.tokens,
             tma: our.tma
+        };
+    }
+
+    function buildDecisionIndex(metadata, rows) {
+        var indices = {};
+        indices[normalizeName(metadata && (metadata.val || metadata.name))] = 0;
+        (metadata && metadata.reqs || []).forEach(function(req, index) {
+            var attrs = parseAttrs(req && req.attrs);
+            indices[normalizeName(attrs.alias || req.val || req.name)] = index + 1;
+        });
+        function value(row, name) {
+            var index = indices[normalizeName(name)];
+            return index == null || !row || !row.r ? '' : trimValue(row.r[index]);
+        }
+        var result = {};
+        (Array.isArray(rows) ? rows : []).map(function(row) {
+            return {
+                row: row,
+                rfpId: value(row, 'RFP ID'),
+                skuId: value(row, 'SKU ID'),
+                article: value(row, 'Артикул SKU'),
+                label: value(row, 'Наименование SKU'),
+                decision: normalizeName(value(row, 'Решение')),
+                accuracy: Number(value(row, 'Точность')) || 0,
+                date: value(row, 'Дата')
+            };
+        }).sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); }).forEach(function(item) {
+            if (!item.rfpId) return;
+            if (!result[item.rfpId]) result[item.rfpId] = { accepted: null, rejected: {} };
+            if (item.decision === normalizeName('Принято')) {
+                result[item.rfpId].accepted = item;
+            } else if (item.decision === normalizeName('Отклонено')) {
+                if (item.skuId) result[item.rfpId].rejected[item.skuId] = true;
+                if (item.article) result[item.rfpId].rejected[item.article] = true;
+            }
+        });
+        return result;
+    }
+
+    function applyDecisionLog(recordId, rows, index) {
+        var decisions = (index || state.decisionIndex)[String(recordId)] || { accepted: null, rejected: {} };
+        if (decisions.accepted) {
+            return {
+                accepted: {
+                    our: {
+                        id: decisions.accepted.skuId,
+                        article: decisions.accepted.article,
+                        label: decisions.accepted.label || decisions.accepted.article || decisions.accepted.skuId,
+                        tokens: '', tma: '', source: {}
+                    },
+                    candidates: [], tokens: '', tma: '', accuracy: decisions.accepted.accuracy,
+                    fromDecisionLog: true
+                },
+                rows: []
+            };
+        }
+        return {
+            accepted: null,
+            rows: (rows || []).filter(function(row) {
+                var skuId = trimValue(row && row[state.skuIdKey]);
+                var article = trimValue(row && row[state.skuArticleKey]);
+                return !(decisions.rejected[skuId] || decisions.rejected[article]);
+            })
         };
     }
 
@@ -795,20 +978,27 @@
         updateRecordRow(record);
         updateProgress();
 
-        return fetchJson(buildMatchUrl(record.id)).then(function(json) {
-            return pickMatches(normalizeQueryRows(json));
+        var remembered = applyDecisionLog(record.id, [], state.decisionIndex);
+        var matching = remembered.accepted ? Promise.resolve(remembered.accepted) : fetchJson(buildMatchUrl(record.id)).then(function(json) {
+            var filtered = applyDecisionLog(record.id, normalizeQueryRows(json), state.decisionIndex);
+            return pickMatches(filtered.rows);
         }).catch(function(error) {
             // ошибка запроса/отчёта — дальше поставим заглушку, чтобы строка не зависла
             record.message = error && error.message ? error.message : 'Не удалось обработать строку.';
             return null;
-        }).then(function(picked) {
+        });
+        return matching.then(function(picked) {
             if (picked && picked.our) {
                 record.our = picked.our;
                 record.candidates = picked.candidates;
                 // Вес ТММ — из конфига категории (#4817): партнёр настраивает долю вклада
                 // точного совпадения артикула, не трогая код и запросы.
-                record.accuracy = computeAccuracy(record.rfpName || record.label, picked.our.label, picked.tokens, picked.tma,
-                    state.matchConfig.tma_weight);
+                record.accuracy = picked.fromDecisionLog ? picked.accuracy : applyAttributeWeights(
+                    computeAccuracy(record.rfpName || record.label, picked.our.label, picked.tokens, picked.tma,
+                        state.matchConfig.tma_weight),
+                    picked.our.source,
+                    state.matchConfig.attribute_weights
+                );
             } else {
                 // нет совпадений (picked.our пуст) или ошибка отчёта (picked === null) —
                 // пишем заглушку «Наш артикул», иначе строка зависнет в пустом состоянии
@@ -1096,6 +1286,29 @@
         });
     }
 
+    function loadDecisionLog() {
+        var logConfig = state.matchConfig && state.matchConfig.decision_log;
+        if (logConfig && logConfig.enabled === false) return Promise.resolve();
+        var tableName = logConfig && trimValue(logConfig.table_name) || 'Решение по паре';
+        return fetchJson('/' + encodePathSegment(state.db) + '/metadata').then(function(payload) {
+            var tables = Array.isArray(payload) ? payload : [payload];
+            var table = null;
+            tables.some(function(item) {
+                if (normalizeName(item && (item.val || item.name)) === normalizeName(tableName)) { table = item; return true; }
+                return false;
+            });
+            if (!table || !table.id) {
+                console.warn('[xcom-mass] журнал решений не найден, повторный прогон не защищён ручными решениями');
+                return;
+            }
+            return fetchJson('/' + encodePathSegment(state.db) + '/object/' + encodePathSegment(table.id) + '/?JSON_OBJ&LIMIT=0,10000').then(function(rows) {
+                state.decisionIndex = buildDecisionIndex(table, rows);
+            });
+        }).catch(function(error) {
+            console.warn('[xcom-mass] журнал решений не загружен (' + (error.message || error) + ')');
+        });
+    }
+
     function loadMetadata() {
         renderMessage('Загрузка метаданных таблицы RFP…', 'loading');
         return fetchJson(buildMetadataUrl()).then(function(payload) {
@@ -1244,7 +1457,7 @@
         applyAutoConcurrency();   // селектор активен только в ручном режиме + плитка «потоков»
         updateBatchHint();
         // Конфиг категории — до первой пачки: гейт и вес нужны processRecord'у (#4817).
-        loadMatchingConfig().then(loadMetadata);
+        loadMatchingConfig().then(loadDecisionLog).then(loadMetadata);
     }
 
     window.XcomMassMatchWorkspace = {
@@ -1254,6 +1467,9 @@
         validateMatchingConfig: validateMatchingConfig,
         mergeMatchingConfig: mergeMatchingConfig,
         passesRequiredAttributes: passesRequiredAttributes,
+        applyAttributeWeights: applyAttributeWeights,
+        buildDecisionIndex: buildDecisionIndex,
+        applyDecisionLog: applyDecisionLog,
         buildColumns: buildColumns,
         resolveMetadata: resolveMetadata,
         normalizeRows: normalizeRows,

@@ -1,4 +1,21 @@
 {
+  "schema_version": 1,
+  "category": "",
+  "preset": "",
   "tma_weight": 0.5,
-  "required_attributes": []
+  "attribute_weights": [],
+  "required_attributes": [],
+  "column_mapping": {
+    "rfp": {},
+    "sku": {}
+  },
+  "llm": {
+    "enabled": false,
+    "gray_zone_min": 45,
+    "gray_zone_max": 75
+  },
+  "decision_log": {
+    "enabled": true,
+    "table_name": "Решение по паре"
+  }
 }
