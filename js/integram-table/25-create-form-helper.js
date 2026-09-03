@@ -2754,6 +2754,11 @@ if (typeof window !== 'undefined') {
 function autoInitTables() {
     const tables = document.querySelectorAll('[data-integram-table]');
     tables.forEach(element => {
+        // The bundle may be evaluated more than once on pages that replace
+        // partial content. Keep auto-initialization idempotent so the same
+        // element does not accumulate duplicate requests and global listeners.
+        if (element._integramTableInstance) return;
+
         const options = {
             apiUrl: element.dataset.apiUrl || '',
             pageSize: parseInt(element.dataset.pageSize) || 20,
@@ -2767,6 +2772,7 @@ function autoInitTables() {
 
         // Create instance and store in window if instanceName is provided
         const instance = new IntegramTable(element.id, options);
+        element._integramTableInstance = instance;
         if (options.instanceName) {
             // Keep the legacy property for bracket-notation integrations, while
             // inline handlers use the constructor-normalized safe identifier.
