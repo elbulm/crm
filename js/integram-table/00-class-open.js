@@ -15,8 +15,19 @@
 
 const itModalEscapeState = {
     stack: [],
-    keydownHandler: null
+    keydownHandler: null,
+    cleanupByModal: new WeakMap()
 };
+
+function itAddModalDocumentListener(modal, type, handler, options) {
+    if (!itIsModalConnected(modal)) return () => {};
+    document.addEventListener(type, handler, options);
+    const cleanup = () => document.removeEventListener(type, handler, options);
+    const cleanups = itModalEscapeState.cleanupByModal.get(modal) || [];
+    cleanups.push(cleanup);
+    itModalEscapeState.cleanupByModal.set(modal, cleanups);
+    return cleanup;
+}
 
 function itIsModalConnected(modal) {
     if (!modal) return false;
@@ -39,6 +50,9 @@ function itCreateModalCloseHandler(modal, closeCallback) {
         if (!active) return;
         active = false;
         if (observer) observer.disconnect();
+        const cleanups = itModalEscapeState.cleanupByModal.get(modal) || [];
+        cleanups.forEach(cleanup => cleanup());
+        itModalEscapeState.cleanupByModal.delete(modal);
         const index = itModalEscapeState.stack.indexOf(entry);
         if (index !== -1) itModalEscapeState.stack.splice(index, 1);
         if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {

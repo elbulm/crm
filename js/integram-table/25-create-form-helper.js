@@ -831,7 +831,7 @@ class IntegramCreateFormHelper {
         }
 
         // Close dropdowns when clicking outside
-        document.addEventListener('click', (e) => {
+        itAddModalDocumentListener(modal, 'click', (e) => {
             if (!e.target.closest('.form-reference-editor')) {
                 modal.querySelectorAll('.form-ref-dropdown').forEach(dropdown => {
                     dropdown.style.display = 'none';

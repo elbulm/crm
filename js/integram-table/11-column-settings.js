@@ -1329,7 +1329,7 @@
             ensureGlobalMetadataForSuggestions();
 
             // Hide suggestions when clicking outside
-            document.addEventListener('click', (e) => {
+            itAddModalDocumentListener(modal, 'click', (e) => {
                 if (!nameInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
                     suggestionsDiv.style.display = 'none';
                 }

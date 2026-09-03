@@ -240,8 +240,13 @@
             if (this._containerHeightObserver) {
                 this._containerHeightObserver.disconnect();
             }
+            if (this._containerHeightResizeListener) {
+                window.removeEventListener('resize', this._containerHeightResizeListener);
+                this._containerHeightResizeListener = null;
+            }
             if (typeof ResizeObserver === 'undefined') {
-                window.addEventListener('resize', () => this.updateContainerHeight());
+                this._containerHeightResizeListener = () => this.updateContainerHeight();
+                window.addEventListener('resize', this._containerHeightResizeListener);
                 return;
             }
             this._containerHeightObserver = new ResizeObserver(() => this.updateContainerHeight());

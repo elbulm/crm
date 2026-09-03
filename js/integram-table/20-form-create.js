@@ -690,7 +690,7 @@
 
                 // Issue #853: Handle multi-select reference editors separately
                 if (wrapper.dataset.multi === '1') {
-                    this.initFormMultiReferenceEditor(wrapper, refReqId, recordId, refAttrs);
+                    this.initFormMultiReferenceEditor(wrapper, refReqId, recordId, refAttrs, modalElement);
                     continue;
                 }
 
@@ -831,7 +831,7 @@
                     }
 
                     // Hide dropdown when clicking outside the reference editor wrapper
-                    document.addEventListener('click', (e) => {
+                    itAddModalDocumentListener(modalElement, 'click', (e) => {
                         if (!wrapper.contains(e.target)) {
                             dropdown.style.display = 'none';
                         }
@@ -1115,7 +1115,7 @@
                 }
 
                 // Close dropdown when clicking outside
-                document.addEventListener('click', (e) => {
+                itAddModalDocumentListener(container, 'click', (e) => {
                     if (!wrapper.contains(e.target)) {
                         dropdown.style.display = 'none';
                     }
@@ -1128,7 +1128,7 @@
          * Shows selected values as removable tags and a search input to add more.
          * Updates the hidden input with comma-separated selected IDs.
          */
-        async initFormMultiReferenceEditor(wrapper, refReqId, recordId, attrs = '') {
+        async initFormMultiReferenceEditor(wrapper, refReqId, recordId, attrs = '', modalElement = null) {
             const searchInput = wrapper.querySelector('.form-ref-search');
             const dropdown = wrapper.querySelector('.form-ref-dropdown');
             const hiddenInput = wrapper.querySelector('.form-multi-ref-value');
@@ -1345,7 +1345,7 @@
                 });
 
                 // Hide dropdown when clicking outside
-                document.addEventListener('click', (e) => {
+                itAddModalDocumentListener(modalElement || wrapper, 'click', (e) => {
                     if (!wrapper.contains(e.target)) {
                         dropdown.style.display = 'none';
                     }

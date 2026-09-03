@@ -93,16 +93,21 @@ assert.strictEqual(removeCount, 1, 'shared listener is removed exactly once for 
 
 context.buttonModal = { isConnected: true };
 context.buttonCloseCount = 0;
+context.outsideClickCount = 0;
 vm.runInContext(`
     const closeFromButton = itCreateModalCloseHandler(buttonModal, () => {
         buttonCloseCount++;
         buttonModal.isConnected = false;
     });
-    closeFromButton();
-    closeFromButton();
+    itAddModalDocumentListener(buttonModal, 'click', () => outsideClickCount++);
 `, context);
+assert.strictEqual(listeners.get('click').size, 1, 'modal-scoped document listener is registered');
+for (const listener of [...listeners.get('click')]) listener({});
+assert.strictEqual(context.outsideClickCount, 1, 'modal-scoped document listener remains functional');
+vm.runInContext('closeFromButton(); closeFromButton();', context);
 assert.strictEqual(context.buttonCloseCount, 1, 'managed close callback is idempotent');
-assert.strictEqual(listeners.get('keydown').size, 0, 'button close unregisters immediately');
+assert.strictEqual(listeners.get('keydown').size, 0, 'button close unregisters Escape immediately');
+assert.strictEqual(listeners.get('click').size, 0, 'button close removes modal-scoped document listeners');
 
 context.externallyRemovedModal = { isConnected: true };
 vm.runInContext(`
@@ -115,6 +120,9 @@ for (const observer of observers) {
     if (!observer.disconnected) observer.callback();
 }
 assert.strictEqual(listeners.get('keydown').size, 0, 'external DOM removal unregisters the modal');
+vm.runInContext("itAddModalDocumentListener(externallyRemovedModal, 'click', () => {});", context);
+assert.strictEqual(listeners.get('click').size, 0,
+    'async work finishing after modal removal cannot register a stale document listener');
 
 const moduleFiles = fs.readdirSync(sourceDir)
     .filter(name => name.endsWith('.js'))
@@ -128,5 +136,9 @@ const registrationCount = (modularSource.match(/itCreateModalCloseHandler\(/g) |
 assert.strictEqual(creationCount, 23, 'known modal creation sites are accounted for');
 assert.strictEqual(registrationCount, creationCount, 'every modal creation site joins the shared Escape stack');
 assert.ok(!modularSource.includes('const handleEscape ='), 'legacy per-modal Escape handlers are gone');
+assert.ok(!modularSource.includes("document.addEventListener('click', (e) =>"),
+    'modal-owned document click handlers must use lifecycle cleanup');
+assert.ok(!modularSource.includes("window.addEventListener('resize', () => this.updateContainerHeight())"),
+    'rendering must not accumulate anonymous fallback resize handlers');
 
-console.log('✓ Modal Escape stack closes one window at a time and cleans up all listeners');
+console.log('✓ Modal lifecycle closes one window at a time and cleans up global listeners');

@@ -16,8 +16,19 @@
 
 const itModalEscapeState = {
     stack: [],
-    keydownHandler: null
+    keydownHandler: null,
+    cleanupByModal: new WeakMap()
 };
+
+function itAddModalDocumentListener(modal, type, handler, options) {
+    if (!itIsModalConnected(modal)) return () => {};
+    document.addEventListener(type, handler, options);
+    const cleanup = () => document.removeEventListener(type, handler, options);
+    const cleanups = itModalEscapeState.cleanupByModal.get(modal) || [];
+    cleanups.push(cleanup);
+    itModalEscapeState.cleanupByModal.set(modal, cleanups);
+    return cleanup;
+}
 
 function itIsModalConnected(modal) {
     if (!modal) return false;
@@ -40,6 +51,9 @@ function itCreateModalCloseHandler(modal, closeCallback) {
         if (!active) return;
         active = false;
         if (observer) observer.disconnect();
+        const cleanups = itModalEscapeState.cleanupByModal.get(modal) || [];
+        cleanups.forEach(cleanup => cleanup());
+        itModalEscapeState.cleanupByModal.delete(modal);
         const index = itModalEscapeState.stack.indexOf(entry);
         if (index !== -1) itModalEscapeState.stack.splice(index, 1);
         if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {
@@ -7716,8 +7730,13 @@ class IntegramTable{
             if (this._containerHeightObserver) {
                 this._containerHeightObserver.disconnect();
             }
+            if (this._containerHeightResizeListener) {
+                window.removeEventListener('resize', this._containerHeightResizeListener);
+                this._containerHeightResizeListener = null;
+            }
             if (typeof ResizeObserver === 'undefined') {
-                window.addEventListener('resize', () => this.updateContainerHeight());
+                this._containerHeightResizeListener = () => this.updateContainerHeight();
+                window.addEventListener('resize', this._containerHeightResizeListener);
                 return;
             }
             this._containerHeightObserver = new ResizeObserver(() => this.updateContainerHeight());
@@ -9483,7 +9502,7 @@ class IntegramTable{
             ensureGlobalMetadataForSuggestions();
 
             // Hide suggestions when clicking outside
-            document.addEventListener('click', (e) => {
+            itAddModalDocumentListener(modal, 'click', (e) => {
                 if (!nameInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
                     suggestionsDiv.style.display = 'none';
                 }
@@ -15195,7 +15214,7 @@ class IntegramTable{
 
                 // Issue #853: Handle multi-select reference editors separately
                 if (wrapper.dataset.multi === '1') {
-                    this.initFormMultiReferenceEditor(wrapper, refReqId, recordId, refAttrs);
+                    this.initFormMultiReferenceEditor(wrapper, refReqId, recordId, refAttrs, modalElement);
                     continue;
                 }
 
@@ -15336,7 +15355,7 @@ class IntegramTable{
                     }
 
                     // Hide dropdown when clicking outside the reference editor wrapper
-                    document.addEventListener('click', (e) => {
+                    itAddModalDocumentListener(modalElement, 'click', (e) => {
                         if (!wrapper.contains(e.target)) {
                             dropdown.style.display = 'none';
                         }
@@ -15620,7 +15639,7 @@ class IntegramTable{
                 }
 
                 // Close dropdown when clicking outside
-                document.addEventListener('click', (e) => {
+                itAddModalDocumentListener(container, 'click', (e) => {
                     if (!wrapper.contains(e.target)) {
                         dropdown.style.display = 'none';
                     }
@@ -15633,7 +15652,7 @@ class IntegramTable{
          * Shows selected values as removable tags and a search input to add more.
          * Updates the hidden input with comma-separated selected IDs.
          */
-        async initFormMultiReferenceEditor(wrapper, refReqId, recordId, attrs = '') {
+        async initFormMultiReferenceEditor(wrapper, refReqId, recordId, attrs = '', modalElement = null) {
             const searchInput = wrapper.querySelector('.form-ref-search');
             const dropdown = wrapper.querySelector('.form-ref-dropdown');
             const hiddenInput = wrapper.querySelector('.form-multi-ref-value');
@@ -15850,7 +15869,7 @@ class IntegramTable{
                 });
 
                 // Hide dropdown when clicking outside
-                document.addEventListener('click', (e) => {
+                itAddModalDocumentListener(modalElement || wrapper, 'click', (e) => {
                     if (!wrapper.contains(e.target)) {
                         dropdown.style.display = 'none';
                     }
@@ -20551,7 +20570,7 @@ class IntegramCreateFormHelper {
         }
 
         // Close dropdowns when clicking outside
-        document.addEventListener('click', (e) => {
+        itAddModalDocumentListener(modal, 'click', (e) => {
             if (!e.target.closest('.form-reference-editor')) {
                 modal.querySelectorAll('.form-ref-dropdown').forEach(dropdown => {
                     dropdown.style.display = 'none';
