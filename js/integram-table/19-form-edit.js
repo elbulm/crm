@@ -290,7 +290,7 @@
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1422)
             if (saveBtn) {
@@ -1097,7 +1097,7 @@
                 overlay.addEventListener('click', closeModal);
 
                 // Shared Escape stack closes only the topmost modal and unregisters on removal.
-                itCreateModalCloseHandler(modal, closeModal);
+                itCreateModalCloseHandler(modal, closeModal, this);
 
             } catch (error) {
                 console.error('Error opening subordinate table:', error);
@@ -1501,7 +1501,7 @@
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Close handlers
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);

@@ -421,7 +421,7 @@ class IntegramCreateFormHelper {
         overlay.addEventListener('click', closeModal);
 
         // Shared Escape stack closes only the topmost modal and unregisters on removal.
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         // Enter in input/textarea triggers Save (issue #1422)
         modal.addEventListener('keydown', (e) => {
@@ -1486,7 +1486,7 @@ class IntegramCreateFormHelper {
         overlay.addEventListener('click', closeModal);
 
         // Shared Escape stack closes only the topmost modal and unregisters on removal.
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         // Enter in input/textarea triggers Save (issue #1422)
         modal.addEventListener('keydown', (e) => {
@@ -1917,7 +1917,7 @@ class IntegramCreateFormHelper {
             window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
         };
 
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         // Close handlers
         modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
@@ -2170,7 +2170,7 @@ class IntegramCreateFormHelper {
         overlay.addEventListener('click', closeModal);
 
         // Shared Escape stack closes only the topmost modal and unregisters on removal.
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         saveBtn.addEventListener('click', () => {
             // Save visibility

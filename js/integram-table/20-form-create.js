@@ -237,7 +237,7 @@
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1467)
             const saveBtn = modal.querySelector('#subordinate-save-btn');
@@ -1744,7 +1744,7 @@
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1422)
             modal.addEventListener('keydown', (e) => {

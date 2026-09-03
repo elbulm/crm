@@ -26,7 +26,7 @@
         }
 
         restoreScrollState(scrollState) {
-            if (!scrollState) return;
+            if (this._destroyed || !scrollState) return;
 
             const scrollContainer = this.getScrollContainer();
             if (!scrollContainer) return;
@@ -220,9 +220,13 @@
 
         checkAndLoadMore() {
             // Check if table fits entirely on screen and there are more records
-            setTimeout(() => {
+            if (this._checkAndLoadMoreTimer !== null && this._checkAndLoadMoreTimer !== undefined) {
+                clearTimeout(this._checkAndLoadMoreTimer);
+            }
+            this._checkAndLoadMoreTimer = setTimeout(() => {
+                this._checkAndLoadMoreTimer = null;
                 // First check if container exists
-                if (!this.container) return;
+                if (this._destroyed || !this.container) return;
                 const tableWrapper = this.container.querySelector('.integram-table-wrapper');
                 const decision = this.getScrollLoadDecision(tableWrapper, 'post-render-check');
                 this.traceScrollLoadDecision(decision);
@@ -330,10 +334,10 @@
 
             // Remove existing listeners if any
             if (this.tableScrollListener) {
-                tableContainer.removeEventListener('scroll', this.tableScrollListener);
+                (this._tableScrollElement || tableContainer).removeEventListener('scroll', this.tableScrollListener);
             }
             if (this.stickyScrollListener) {
-                stickyScrollbar.removeEventListener('scroll', this.stickyScrollListener);
+                (this._stickyScrollbarElement || stickyScrollbar).removeEventListener('scroll', this.stickyScrollListener);
             }
             if (this.stickyVisibilityListener) {
                 (this._stickyScrollContainer || window).removeEventListener('scroll', this.stickyVisibilityListener);
@@ -341,6 +345,8 @@
             }
 
             this._stickyScrollContainer = scrollContainer;
+            this._tableScrollElement = tableContainer;
+            this._stickyScrollbarElement = stickyScrollbar;
 
             // Attach listeners
             this.tableScrollListener = syncFromTable;
@@ -452,12 +458,20 @@
                         this.columnWidths[columnId] = newWidth;
                     };
 
-                    const onMouseUp = () => {
+                    if (this._columnResizeCleanup) this._columnResizeCleanup();
+                    const cleanupResize = () => {
                         document.removeEventListener('mousemove', onMouseMove);
                         document.removeEventListener('mouseup', onMouseUp);
-                        this.saveColumnState();
+                        if (this._columnResizeCleanup === cleanupResize) {
+                            this._columnResizeCleanup = null;
+                        }
+                    };
+                    const onMouseUp = () => {
+                        cleanupResize();
+                        if (!this._destroyed) this.saveColumnState();
                     };
 
+                    this._columnResizeCleanup = cleanupResize;
                     document.addEventListener('mousemove', onMouseMove);
                     document.addEventListener('mouseup', onMouseUp);
                 });

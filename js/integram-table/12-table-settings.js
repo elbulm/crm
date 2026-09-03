@@ -178,7 +178,7 @@
             overlay.addEventListener('click', () => this.closeTableSettings());
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, () => this.closeTableSettings());
+            itCreateModalCloseHandler(modal, () => this.closeTableSettings(), this);
         }
 
         closeTableSettings() {
@@ -341,7 +341,7 @@
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
         }
 
         toggleFilters() {

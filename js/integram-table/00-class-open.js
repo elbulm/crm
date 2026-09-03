@@ -41,7 +41,7 @@ function itIsModalConnected(modal) {
  * a modal by a button, backdrop, save action, or DOM removal cannot leave a
  * stale global keydown listener behind.
  */
-function itCreateModalCloseHandler(modal, closeCallback) {
+function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
     let active = true;
     let observer = null;
     const entry = { modal, close: null, unregister: null };
@@ -53,6 +53,7 @@ function itCreateModalCloseHandler(modal, closeCallback) {
         const cleanups = itModalEscapeState.cleanupByModal.get(modal) || [];
         cleanups.forEach(cleanup => cleanup());
         itModalEscapeState.cleanupByModal.delete(modal);
+        if (owner && owner._modalCloseHandlers) owner._modalCloseHandlers.delete(close);
         const index = itModalEscapeState.stack.indexOf(entry);
         if (index !== -1) itModalEscapeState.stack.splice(index, 1);
         if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {
@@ -66,6 +67,11 @@ function itCreateModalCloseHandler(modal, closeCallback) {
         unregister();
         return closeCallback(...args);
     };
+
+    if (owner) {
+        if (!(owner._modalCloseHandlers instanceof Set)) owner._modalCloseHandlers = new Set();
+        owner._modalCloseHandlers.add(close);
+    }
 
     entry.close = close;
     entry.unregister = unregister;

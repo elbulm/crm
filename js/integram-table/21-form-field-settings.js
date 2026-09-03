@@ -124,7 +124,7 @@
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             saveBtn.addEventListener('click', () => {
                 // Save visibility
@@ -878,7 +878,7 @@
                 });
 
                 // Shared Escape stack closes only the topmost modal and unregisters on removal.
-                itCreateModalCloseHandler(confirmModal, () => cleanup(null));
+                itCreateModalCloseHandler(confirmModal, () => cleanup(null), this);
             });
         }
 
@@ -925,7 +925,7 @@
                 });
 
                 // Shared Escape stack closes only the topmost modal and unregisters on removal.
-                itCreateModalCloseHandler(confirmModal, () => cleanup(false));
+                itCreateModalCloseHandler(confirmModal, () => cleanup(false), this);
             });
         }
 

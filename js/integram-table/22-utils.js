@@ -687,7 +687,7 @@
             });
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(overlay, () => overlay.remove());
+            itCreateModalCloseHandler(overlay, () => overlay.remove(), this);
         }
 
         /**
@@ -735,7 +735,7 @@
             });
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(overlay, () => overlay.remove());
+            itCreateModalCloseHandler(overlay, () => overlay.remove(), this);
         }
 
         /**

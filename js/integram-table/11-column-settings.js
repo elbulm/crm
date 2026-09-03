@@ -271,7 +271,7 @@
             };
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, () => this.closeColumnSettings());
+            itCreateModalCloseHandler(modal, () => this.closeColumnSettings(), this);
         }
 
         /**
@@ -447,7 +447,7 @@
                 colEditModal.remove();
             };
 
-            itCreateModalCloseHandler(colEditModal, closeColEdit);
+            itCreateModalCloseHandler(colEditModal, closeColEdit, this);
 
             const refreshCurrentTableAfterDelete = async () => {
                 this.metadataCache = {};
@@ -1508,7 +1508,7 @@
             modal.querySelector(`#new-column-name-${instanceName}`).focus();
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeAddColumnModal);
+            itCreateModalCloseHandler(modal, closeAddColumnModal, this);
         }
 
         /**

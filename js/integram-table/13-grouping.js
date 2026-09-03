@@ -109,7 +109,7 @@
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
         }
 
         /**

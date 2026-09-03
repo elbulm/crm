@@ -45,6 +45,7 @@
             this.isLoading = false;  // Prevent multiple simultaneous loads
             this._loadDataPromise = null;  // Promise for the full active load queue
             this._loadRequestVersion = 0;  // Invalidates responses superseded by a refresh
+            this._destroyed = false;  // Prevents late async work after teardown
             this._reloadQueued = false;  // Coalesces refreshes requested during an active load
             this.pendingRequests = 0;  // In-flight server requests; drives the toolbar AJAX spinner
             this.filters = {};
@@ -448,6 +449,8 @@
         }
 
         init() {
+            if (this._destroyed) return;
+
             // Remove padding from the parent container so the table fills full width (issue #887)
             if (this.container && this.container.parentElement) {
                 this.container.parentElement.parentElement.style.padding = '0';
@@ -461,7 +464,125 @@
             this.loadData();
         }
 
+        /**
+         * Release global resources owned by this table instance. This is safe to
+         * call more than once and invalidates any in-flight load before detaching
+         * listeners, observers, timers, registry entries, and automatic aliases.
+         */
+        destroy(options = {}) {
+            if (this._destroyed) return;
+            this._destroyed = true;
+            this._loadRequestVersion = (this._loadRequestVersion || 0) + 1;
+            this._reloadQueued = false;
+            this.hasMore = false;
+            this.isLoading = false;
+
+            const removeListener = (target, type, handler, listenerOptions) => {
+                if (target && handler && typeof target.removeEventListener === 'function') {
+                    target.removeEventListener(type, handler, listenerOptions);
+                }
+            };
+
+            removeListener(this.container, 'click', this._fullValueClickHandler);
+            removeListener(this.container, 'click', this._tableButtonClickHandler);
+            removeListener(this.container, 'click', this._cellClickHandler);
+            removeListener(this._scrollListenerContainer || window, 'scroll', this.scrollListener);
+            removeListener(document, 'keydown', this.plusKeyListener);
+            removeListener(window, 'resize', this._containerHeightResizeListener);
+            removeListener(this._tableScrollElement, 'scroll', this.tableScrollListener);
+            removeListener(this._stickyScrollbarElement, 'scroll', this.stickyScrollListener);
+            removeListener(this._stickyScrollContainer || window, 'scroll', this.stickyVisibilityListener);
+            removeListener(window, 'resize', this.stickyVisibilityListener);
+            removeListener(window, 'resize', this.scrollCounterResizeListener);
+            removeListener(window, 'scroll', this.scrollCounterScrollListener, true);
+
+            if (this._modalCloseHandlers instanceof Set) {
+                const closeHandlers = Array.from(this._modalCloseHandlers);
+                this._modalCloseHandlers.clear();
+                closeHandlers.reverse().forEach(close => {
+                    try {
+                        close();
+                    } catch (error) {
+                        console.error('Failed to close table modal during destroy:', error);
+                    }
+                });
+            }
+
+            if (typeof this.closeRefFilterDropdown === 'function') {
+                this.closeRefFilterDropdown();
+            }
+            removeListener(document, 'click', this.handleRefFilterDropdownOutsideClick);
+
+            ['filterTimeout', '_checkAndLoadMoreTimer', '_navigateTimer', '_refFilterOutsideClickTimer']
+                .forEach(field => {
+                    if (this[field] !== null && this[field] !== undefined) clearTimeout(this[field]);
+                    this[field] = null;
+                });
+
+            if (this._containerHeightObserver) this._containerHeightObserver.disconnect();
+            if (this.scrollCounterResizeObserver) this.scrollCounterResizeObserver.disconnect();
+            if (this._columnResizeCleanup) this._columnResizeCleanup();
+
+            [
+                '_fullValueClickHandler', '_tableButtonClickHandler', '_cellClickHandler',
+                'scrollListener', '_scrollListenerContainer', 'plusKeyListener',
+                '_containerHeightResizeListener', '_containerHeightObserver',
+                'tableScrollListener', '_tableScrollElement', 'stickyScrollListener',
+                '_stickyScrollbarElement', 'stickyVisibilityListener', '_stickyScrollContainer',
+                'scrollCounterResizeListener', 'scrollCounterScrollListener',
+                'scrollCounterResizeObserver', '_columnResizeCleanup', '_modalCloseHandlers'
+            ].forEach(field => { this[field] = null; });
+
+            const registry = typeof window !== 'undefined' && window._integramTableInstances;
+            if (Array.isArray(registry)) {
+                for (let index = registry.length - 1; index >= 0; index -= 1) {
+                    if (registry[index] === this) registry.splice(index, 1);
+                }
+            }
+
+            const aliases = new Set(Array.isArray(this._globalAliases) ? this._globalAliases : []);
+            if (this.options && this.options.instanceName) aliases.add(this.options.instanceName);
+            aliases.forEach(alias => {
+                if (window[alias] === this) {
+                    try {
+                        delete window[alias];
+                    } catch (error) {
+                        window[alias] = undefined;
+                    }
+                }
+            });
+            this._globalAliases = [];
+
+            const container = this.container;
+            if (container && container._integramTableInstance === this) {
+                delete container._integramTableInstance;
+            }
+            if (options.clearContainer !== false && container) {
+                container.innerHTML = '';
+            }
+
+            this.currentEditingCell = null;
+            this.pendingCellClick = null;
+            this.pendingNewRow = null;
+            this.columns = [];
+            this.data = [];
+            this.rawObjectData = [];
+            this.groupedData = [];
+            if (this.selectedRows && typeof this.selectedRows.clear === 'function') this.selectedRows.clear();
+            this.metadataCache = {};
+            this.metadataFetchPromises = {};
+            this.globalMetadata = null;
+            this.globalMetadataPromise = null;
+            if (this.options) {
+                this.options.onCellClick = null;
+                this.options.onDataLoad = null;
+            }
+            this.container = null;
+        }
+
         async loadGlobalMetadata() {
+            if (this._destroyed) return;
+
             // If already loaded on this instance, return immediately (issue #1455)
             if (this.globalMetadata) {
                 return;
@@ -515,7 +636,7 @@
             }
 
             const metadata = await fetchPromise;
-            if (metadata) {
+            if (metadata && !this._destroyed) {
                 this.applyGlobalMetadata(metadata);
             }
         }
@@ -527,6 +648,7 @@
          * asynchronously and may fire after the user has scrolled (issue #2744).
          */
         applyGlobalMetadata(metadata) {
+            if (this._destroyed) return;
             this.globalMetadata = metadata;
             if (this.columns.length > 0) {
                 this.renderPreservingScroll(() => this.render());
@@ -556,6 +678,8 @@
          * Used to display breadcrumb-like title: "{parent table name} {record value}: {current table name}"
          */
         async loadParentInfo() {
+            if (this._destroyed) return;
+
             try {
                 // Only fetch parent info if parentId is numeric and > 1
                 const parentId = parseInt(this.options.parentId, 10);
@@ -570,6 +694,7 @@
                     return;
                 }
                 const data = await response.json();
+                if (this._destroyed) return;
                 if (data && data.id) {
                     this.parentInfo = {
                         id: data.id,
@@ -682,6 +807,8 @@
         }
 
         async loadData(append = false) {
+            if (this._destroyed) return;
+
             // Block appending when there are no more records, and block scroll-triggered
             // appends while a new row is pending creation (issue #2059): re-rendering
             // would destroy the unsaved row and lose the editor focus.
@@ -739,7 +866,7 @@
         }
 
         async _runLoadData(append = false, requestVersion = this._loadRequestVersion || 0) {
-            const isObsolete = () => requestVersion !== (this._loadRequestVersion || 0);
+            const isObsolete = () => this._destroyed || requestVersion !== (this._loadRequestVersion || 0);
             // Marks the window in which a pending metadataStale flag may be acted on
             // (issue #4364) — see shouldRebuildColumns().
             this._fullReload = !append;

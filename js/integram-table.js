@@ -42,7 +42,7 @@ function itIsModalConnected(modal) {
  * a modal by a button, backdrop, save action, or DOM removal cannot leave a
  * stale global keydown listener behind.
  */
-function itCreateModalCloseHandler(modal, closeCallback) {
+function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
     let active = true;
     let observer = null;
     const entry = { modal, close: null, unregister: null };
@@ -54,6 +54,7 @@ function itCreateModalCloseHandler(modal, closeCallback) {
         const cleanups = itModalEscapeState.cleanupByModal.get(modal) || [];
         cleanups.forEach(cleanup => cleanup());
         itModalEscapeState.cleanupByModal.delete(modal);
+        if (owner && owner._modalCloseHandlers) owner._modalCloseHandlers.delete(close);
         const index = itModalEscapeState.stack.indexOf(entry);
         if (index !== -1) itModalEscapeState.stack.splice(index, 1);
         if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {
@@ -67,6 +68,11 @@ function itCreateModalCloseHandler(modal, closeCallback) {
         unregister();
         return closeCallback(...args);
     };
+
+    if (owner) {
+        if (!(owner._modalCloseHandlers instanceof Set)) owner._modalCloseHandlers = new Set();
+        owner._modalCloseHandlers.add(close);
+    }
 
     entry.close = close;
     entry.unregister = unregister;
@@ -146,6 +152,7 @@ class IntegramTable{
             this.isLoading = false;  // Prevent multiple simultaneous loads
             this._loadDataPromise = null;  // Promise for the full active load queue
             this._loadRequestVersion = 0;  // Invalidates responses superseded by a refresh
+            this._destroyed = false;  // Prevents late async work after teardown
             this._reloadQueued = false;  // Coalesces refreshes requested during an active load
             this.pendingRequests = 0;  // In-flight server requests; drives the toolbar AJAX spinner
             this.filters = {};
@@ -549,6 +556,8 @@ class IntegramTable{
         }
 
         init() {
+            if (this._destroyed) return;
+
             // Remove padding from the parent container so the table fills full width (issue #887)
             if (this.container && this.container.parentElement) {
                 this.container.parentElement.parentElement.style.padding = '0';
@@ -562,7 +571,125 @@ class IntegramTable{
             this.loadData();
         }
 
+        /**
+         * Release global resources owned by this table instance. This is safe to
+         * call more than once and invalidates any in-flight load before detaching
+         * listeners, observers, timers, registry entries, and automatic aliases.
+         */
+        destroy(options = {}) {
+            if (this._destroyed) return;
+            this._destroyed = true;
+            this._loadRequestVersion = (this._loadRequestVersion || 0) + 1;
+            this._reloadQueued = false;
+            this.hasMore = false;
+            this.isLoading = false;
+
+            const removeListener = (target, type, handler, listenerOptions) => {
+                if (target && handler && typeof target.removeEventListener === 'function') {
+                    target.removeEventListener(type, handler, listenerOptions);
+                }
+            };
+
+            removeListener(this.container, 'click', this._fullValueClickHandler);
+            removeListener(this.container, 'click', this._tableButtonClickHandler);
+            removeListener(this.container, 'click', this._cellClickHandler);
+            removeListener(this._scrollListenerContainer || window, 'scroll', this.scrollListener);
+            removeListener(document, 'keydown', this.plusKeyListener);
+            removeListener(window, 'resize', this._containerHeightResizeListener);
+            removeListener(this._tableScrollElement, 'scroll', this.tableScrollListener);
+            removeListener(this._stickyScrollbarElement, 'scroll', this.stickyScrollListener);
+            removeListener(this._stickyScrollContainer || window, 'scroll', this.stickyVisibilityListener);
+            removeListener(window, 'resize', this.stickyVisibilityListener);
+            removeListener(window, 'resize', this.scrollCounterResizeListener);
+            removeListener(window, 'scroll', this.scrollCounterScrollListener, true);
+
+            if (this._modalCloseHandlers instanceof Set) {
+                const closeHandlers = Array.from(this._modalCloseHandlers);
+                this._modalCloseHandlers.clear();
+                closeHandlers.reverse().forEach(close => {
+                    try {
+                        close();
+                    } catch (error) {
+                        console.error('Failed to close table modal during destroy:', error);
+                    }
+                });
+            }
+
+            if (typeof this.closeRefFilterDropdown === 'function') {
+                this.closeRefFilterDropdown();
+            }
+            removeListener(document, 'click', this.handleRefFilterDropdownOutsideClick);
+
+            ['filterTimeout', '_checkAndLoadMoreTimer', '_navigateTimer', '_refFilterOutsideClickTimer']
+                .forEach(field => {
+                    if (this[field] !== null && this[field] !== undefined) clearTimeout(this[field]);
+                    this[field] = null;
+                });
+
+            if (this._containerHeightObserver) this._containerHeightObserver.disconnect();
+            if (this.scrollCounterResizeObserver) this.scrollCounterResizeObserver.disconnect();
+            if (this._columnResizeCleanup) this._columnResizeCleanup();
+
+            [
+                '_fullValueClickHandler', '_tableButtonClickHandler', '_cellClickHandler',
+                'scrollListener', '_scrollListenerContainer', 'plusKeyListener',
+                '_containerHeightResizeListener', '_containerHeightObserver',
+                'tableScrollListener', '_tableScrollElement', 'stickyScrollListener',
+                '_stickyScrollbarElement', 'stickyVisibilityListener', '_stickyScrollContainer',
+                'scrollCounterResizeListener', 'scrollCounterScrollListener',
+                'scrollCounterResizeObserver', '_columnResizeCleanup', '_modalCloseHandlers'
+            ].forEach(field => { this[field] = null; });
+
+            const registry = typeof window !== 'undefined' && window._integramTableInstances;
+            if (Array.isArray(registry)) {
+                for (let index = registry.length - 1; index >= 0; index -= 1) {
+                    if (registry[index] === this) registry.splice(index, 1);
+                }
+            }
+
+            const aliases = new Set(Array.isArray(this._globalAliases) ? this._globalAliases : []);
+            if (this.options && this.options.instanceName) aliases.add(this.options.instanceName);
+            aliases.forEach(alias => {
+                if (window[alias] === this) {
+                    try {
+                        delete window[alias];
+                    } catch (error) {
+                        window[alias] = undefined;
+                    }
+                }
+            });
+            this._globalAliases = [];
+
+            const container = this.container;
+            if (container && container._integramTableInstance === this) {
+                delete container._integramTableInstance;
+            }
+            if (options.clearContainer !== false && container) {
+                container.innerHTML = '';
+            }
+
+            this.currentEditingCell = null;
+            this.pendingCellClick = null;
+            this.pendingNewRow = null;
+            this.columns = [];
+            this.data = [];
+            this.rawObjectData = [];
+            this.groupedData = [];
+            if (this.selectedRows && typeof this.selectedRows.clear === 'function') this.selectedRows.clear();
+            this.metadataCache = {};
+            this.metadataFetchPromises = {};
+            this.globalMetadata = null;
+            this.globalMetadataPromise = null;
+            if (this.options) {
+                this.options.onCellClick = null;
+                this.options.onDataLoad = null;
+            }
+            this.container = null;
+        }
+
         async loadGlobalMetadata() {
+            if (this._destroyed) return;
+
             // If already loaded on this instance, return immediately (issue #1455)
             if (this.globalMetadata) {
                 return;
@@ -616,7 +743,7 @@ class IntegramTable{
             }
 
             const metadata = await fetchPromise;
-            if (metadata) {
+            if (metadata && !this._destroyed) {
                 this.applyGlobalMetadata(metadata);
             }
         }
@@ -628,6 +755,7 @@ class IntegramTable{
          * asynchronously and may fire after the user has scrolled (issue #2744).
          */
         applyGlobalMetadata(metadata) {
+            if (this._destroyed) return;
             this.globalMetadata = metadata;
             if (this.columns.length > 0) {
                 this.renderPreservingScroll(() => this.render());
@@ -657,6 +785,8 @@ class IntegramTable{
          * Used to display breadcrumb-like title: "{parent table name} {record value}: {current table name}"
          */
         async loadParentInfo() {
+            if (this._destroyed) return;
+
             try {
                 // Only fetch parent info if parentId is numeric and > 1
                 const parentId = parseInt(this.options.parentId, 10);
@@ -671,6 +801,7 @@ class IntegramTable{
                     return;
                 }
                 const data = await response.json();
+                if (this._destroyed) return;
                 if (data && data.id) {
                     this.parentInfo = {
                         id: data.id,
@@ -783,6 +914,8 @@ class IntegramTable{
         }
 
         async loadData(append = false) {
+            if (this._destroyed) return;
+
             // Block appending when there are no more records, and block scroll-triggered
             // appends while a new row is pending creation (issue #2059): re-rendering
             // would destroy the unsaved row and lose the editor focus.
@@ -840,7 +973,7 @@ class IntegramTable{
         }
 
         async _runLoadData(append = false, requestVersion = this._loadRequestVersion || 0) {
-            const isObsolete = () => requestVersion !== (this._loadRequestVersion || 0);
+            const isObsolete = () => this._destroyed || requestVersion !== (this._loadRequestVersion || 0);
             // Marks the window in which a pending metadataStale flag may be acted on
             // (issue #4364) — see shouldRebuildColumns().
             this._fullReload = !append;
@@ -2134,6 +2267,8 @@ class IntegramTable{
         }
 
         render() {
+            if (this._destroyed) return;
+
             // Guard against missing container
             if (!this.container) {
                 console.error('Cannot render: container element not found');
@@ -3752,7 +3887,7 @@ class IntegramTable{
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
             modal.querySelector('#paste-data-cancel-btn').addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
@@ -3889,7 +4024,7 @@ class IntegramTable{
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
-            itCreateModalCloseHandler(previewModal, closePreview);
+            itCreateModalCloseHandler(previewModal, closePreview, this);
             previewModal.querySelector('.edit-form-close').addEventListener('click', closePreview);
             previewModal.querySelector('#paste-preview-cancel-btn').addEventListener('click', closePreview);
             previewOverlay.addEventListener('click', closePreview);
@@ -6665,7 +6800,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1422)
             modal.addEventListener('keydown', (e) => {
@@ -7465,8 +7600,10 @@ class IntegramTable{
             if (!targetCell) return;
 
             // Small delay to ensure DOM is updated after save
-            setTimeout(() => {
-                this.startInlineEdit(targetCell);
+            if (this._navigateTimer !== null && this._navigateTimer !== undefined) clearTimeout(this._navigateTimer);
+            this._navigateTimer = setTimeout(() => {
+                this._navigateTimer = null;
+                if (!this._destroyed) this.startInlineEdit(targetCell);
             }, 50);
         }
 
@@ -7533,7 +7670,7 @@ class IntegramTable{
         }
 
         restoreScrollState(scrollState) {
-            if (!scrollState) return;
+            if (this._destroyed || !scrollState) return;
 
             const scrollContainer = this.getScrollContainer();
             if (!scrollContainer) return;
@@ -7727,9 +7864,13 @@ class IntegramTable{
 
         checkAndLoadMore() {
             // Check if table fits entirely on screen and there are more records
-            setTimeout(() => {
+            if (this._checkAndLoadMoreTimer !== null && this._checkAndLoadMoreTimer !== undefined) {
+                clearTimeout(this._checkAndLoadMoreTimer);
+            }
+            this._checkAndLoadMoreTimer = setTimeout(() => {
+                this._checkAndLoadMoreTimer = null;
                 // First check if container exists
-                if (!this.container) return;
+                if (this._destroyed || !this.container) return;
                 const tableWrapper = this.container.querySelector('.integram-table-wrapper');
                 const decision = this.getScrollLoadDecision(tableWrapper, 'post-render-check');
                 this.traceScrollLoadDecision(decision);
@@ -7837,10 +7978,10 @@ class IntegramTable{
 
             // Remove existing listeners if any
             if (this.tableScrollListener) {
-                tableContainer.removeEventListener('scroll', this.tableScrollListener);
+                (this._tableScrollElement || tableContainer).removeEventListener('scroll', this.tableScrollListener);
             }
             if (this.stickyScrollListener) {
-                stickyScrollbar.removeEventListener('scroll', this.stickyScrollListener);
+                (this._stickyScrollbarElement || stickyScrollbar).removeEventListener('scroll', this.stickyScrollListener);
             }
             if (this.stickyVisibilityListener) {
                 (this._stickyScrollContainer || window).removeEventListener('scroll', this.stickyVisibilityListener);
@@ -7848,6 +7989,8 @@ class IntegramTable{
             }
 
             this._stickyScrollContainer = scrollContainer;
+            this._tableScrollElement = tableContainer;
+            this._stickyScrollbarElement = stickyScrollbar;
 
             // Attach listeners
             this.tableScrollListener = syncFromTable;
@@ -7959,12 +8102,20 @@ class IntegramTable{
                         this.columnWidths[columnId] = newWidth;
                     };
 
-                    const onMouseUp = () => {
+                    if (this._columnResizeCleanup) this._columnResizeCleanup();
+                    const cleanupResize = () => {
                         document.removeEventListener('mousemove', onMouseMove);
                         document.removeEventListener('mouseup', onMouseUp);
-                        this.saveColumnState();
+                        if (this._columnResizeCleanup === cleanupResize) {
+                            this._columnResizeCleanup = null;
+                        }
+                    };
+                    const onMouseUp = () => {
+                        cleanupResize();
+                        if (!this._destroyed) this.saveColumnState();
                     };
 
+                    this._columnResizeCleanup = cleanupResize;
                     document.addEventListener('mousemove', onMouseMove);
                     document.addEventListener('mouseup', onMouseUp);
                 });
@@ -8461,7 +8612,7 @@ class IntegramTable{
             };
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, () => this.closeColumnSettings());
+            itCreateModalCloseHandler(modal, () => this.closeColumnSettings(), this);
         }
 
         /**
@@ -8637,7 +8788,7 @@ class IntegramTable{
                 colEditModal.remove();
             };
 
-            itCreateModalCloseHandler(colEditModal, closeColEdit);
+            itCreateModalCloseHandler(colEditModal, closeColEdit, this);
 
             const refreshCurrentTableAfterDelete = async () => {
                 this.metadataCache = {};
@@ -9698,7 +9849,7 @@ class IntegramTable{
             modal.querySelector(`#new-column-name-${instanceName}`).focus();
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeAddColumnModal);
+            itCreateModalCloseHandler(modal, closeAddColumnModal, this);
         }
 
         /**
@@ -10058,7 +10209,7 @@ class IntegramTable{
             overlay.addEventListener('click', () => this.closeTableSettings());
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, () => this.closeTableSettings());
+            itCreateModalCloseHandler(modal, () => this.closeTableSettings(), this);
         }
 
         closeTableSettings() {
@@ -10221,7 +10372,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
         }
 
         toggleFilters() {
@@ -10344,7 +10495,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
         }
 
         /**
@@ -12186,8 +12337,14 @@ class IntegramTable{
             });
 
             // Close dropdown when clicking outside
-            setTimeout(() => {
-                document.addEventListener('click', this.handleRefFilterDropdownOutsideClick);
+            if (this._refFilterOutsideClickTimer !== null && this._refFilterOutsideClickTimer !== undefined) {
+                clearTimeout(this._refFilterOutsideClickTimer);
+            }
+            this._refFilterOutsideClickTimer = setTimeout(() => {
+                this._refFilterOutsideClickTimer = null;
+                if (!this._destroyed && this.currentRefFilterDropdown) {
+                    document.addEventListener('click', this.handleRefFilterDropdownOutsideClick);
+                }
             }, 0);
         }
 
@@ -12258,11 +12415,15 @@ class IntegramTable{
          * Close the reference filter dropdown (issue #797).
          */
         closeRefFilterDropdown() {
+            if (this._refFilterOutsideClickTimer !== null && this._refFilterOutsideClickTimer !== undefined) {
+                clearTimeout(this._refFilterOutsideClickTimer);
+                this._refFilterOutsideClickTimer = null;
+            }
             if (this.currentRefFilterDropdown) {
                 this.currentRefFilterDropdown.element.remove();
                 this.currentRefFilterDropdown = null;
-                document.removeEventListener('click', this.handleRefFilterDropdownOutsideClick);
             }
+            document.removeEventListener('click', this.handleRefFilterDropdownOutsideClick);
         }
 
         /**
@@ -12841,7 +13002,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1422)
             if (saveBtn) {
@@ -13648,7 +13809,7 @@ class IntegramTable{
                 overlay.addEventListener('click', closeModal);
 
                 // Shared Escape stack closes only the topmost modal and unregisters on removal.
-                itCreateModalCloseHandler(modal, closeModal);
+                itCreateModalCloseHandler(modal, closeModal, this);
 
             } catch (error) {
                 console.error('Error opening subordinate table:', error);
@@ -14052,7 +14213,7 @@ class IntegramTable{
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Close handlers
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
@@ -14819,7 +14980,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1467)
             const saveBtn = modal.querySelector('#subordinate-save-btn');
@@ -16326,7 +16487,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             // Enter in input/textarea triggers Save (issue #1422)
             modal.addEventListener('keydown', (e) => {
@@ -16572,7 +16733,7 @@ class IntegramTable{
             overlay.addEventListener('click', closeModal);
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
 
             saveBtn.addEventListener('click', () => {
                 // Save visibility
@@ -17326,7 +17487,7 @@ class IntegramTable{
                 });
 
                 // Shared Escape stack closes only the topmost modal and unregisters on removal.
-                itCreateModalCloseHandler(confirmModal, () => cleanup(null));
+                itCreateModalCloseHandler(confirmModal, () => cleanup(null), this);
             });
         }
 
@@ -17373,7 +17534,7 @@ class IntegramTable{
                 });
 
                 // Shared Escape stack closes only the topmost modal and unregisters on removal.
-                itCreateModalCloseHandler(confirmModal, () => cleanup(false));
+                itCreateModalCloseHandler(confirmModal, () => cleanup(false), this);
             });
         }
 
@@ -18141,7 +18302,7 @@ class IntegramTable{
             });
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(overlay, () => overlay.remove());
+            itCreateModalCloseHandler(overlay, () => overlay.remove(), this);
         }
 
         /**
@@ -18189,7 +18350,7 @@ class IntegramTable{
             });
 
             // Shared Escape stack closes only the topmost modal and unregisters on removal.
-            itCreateModalCloseHandler(overlay, () => overlay.remove());
+            itCreateModalCloseHandler(overlay, () => overlay.remove(), this);
         }
 
         /**
@@ -20236,7 +20397,7 @@ class IntegramCreateFormHelper {
         overlay.addEventListener('click', closeModal);
 
         // Shared Escape stack closes only the topmost modal and unregisters on removal.
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         // Enter in input/textarea triggers Save (issue #1422)
         modal.addEventListener('keydown', (e) => {
@@ -21301,7 +21462,7 @@ class IntegramCreateFormHelper {
         overlay.addEventListener('click', closeModal);
 
         // Shared Escape stack closes only the topmost modal and unregisters on removal.
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         // Enter in input/textarea triggers Save (issue #1422)
         modal.addEventListener('keydown', (e) => {
@@ -21732,7 +21893,7 @@ class IntegramCreateFormHelper {
             window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
         };
 
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         // Close handlers
         modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
@@ -21985,7 +22146,7 @@ class IntegramCreateFormHelper {
         overlay.addEventListener('click', closeModal);
 
         // Shared Escape stack closes only the topmost modal and unregisters on removal.
-        itCreateModalCloseHandler(modal, closeModal);
+        itCreateModalCloseHandler(modal, closeModal, this);
 
         saveBtn.addEventListener('click', () => {
             // Save visibility

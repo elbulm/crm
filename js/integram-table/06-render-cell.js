@@ -1009,7 +1009,7 @@
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
-            itCreateModalCloseHandler(modal, closeModal);
+            itCreateModalCloseHandler(modal, closeModal, this);
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
             modal.querySelector('#paste-data-cancel-btn').addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
@@ -1146,7 +1146,7 @@
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
-            itCreateModalCloseHandler(previewModal, closePreview);
+            itCreateModalCloseHandler(previewModal, closePreview, this);
             previewModal.querySelector('.edit-form-close').addEventListener('click', closePreview);
             previewModal.querySelector('#paste-preview-cancel-btn').addEventListener('click', closePreview);
             previewOverlay.addEventListener('click', closePreview);

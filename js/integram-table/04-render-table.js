@@ -1,4 +1,6 @@
         render() {
+            if (this._destroyed) return;
+
             // Guard against missing container
             if (!this.container) {
                 console.error('Cannot render: container element not found');
