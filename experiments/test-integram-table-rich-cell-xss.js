@@ -70,4 +70,11 @@ assert(renderCellSource.includes('this.sanitizeCellHtml(value)'),
 assert(!renderCellSource.includes('btnOnclick'),
     'BUTTON values must never be copied into inline onclick');
 
-console.log('PASS rich table cells reject executable HTML, CSS and BUTTON values');
+assert(renderCellSource.includes('colHeaders.map(h => `<th>${ this.escapeHtml(String(h)) }</th>`)'),
+    'paste preview headers must be HTML-escaped');
+assert(renderCellSource.includes('value="${ this.escapeHtml(String(val)) }"'),
+    'paste preview input values must be fully attribute-escaped');
+assert(!renderCellSource.includes('value="${val.replace(/"/g'),
+    'partial quote-only escaping must not be used for paste preview values');
+
+console.log('PASS rich table cells and paste previews reject executable HTML, CSS and BUTTON values');

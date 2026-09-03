@@ -1094,11 +1094,11 @@
             previewModal._overlayElement = previewOverlay;
 
             // Build table HTML with editable cells
-            const theadCols = colHeaders.map(h => `<th>${h}</th>`).join('');
+            const theadCols = colHeaders.map(h => `<th>${ this.escapeHtml(String(h)) }</th>`).join('');
             const tbodyRows = parsedRows.map((row, rowIdx) => {
                 const cells = orderedColIds.map((colId, colIdx) => {
                     const val = row[colIdx] !== undefined ? row[colIdx] : '';
-                    return `<td><input class="paste-preview-cell" data-row="${rowIdx}" data-col="${colIdx}" value="${val.replace(/"/g, '&quot;')}"></td>`;
+                    return `<td><input class="paste-preview-cell" data-row="${rowIdx}" data-col="${colIdx}" value="${ this.escapeHtml(String(val)) }"></td>`;
                 });
                 return `<tr>${cells.join('')}</tr>`;
             }).join('');
