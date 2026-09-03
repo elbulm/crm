@@ -2751,6 +2751,31 @@ if (typeof window !== 'undefined') {
 }
 
 // Auto-initialize tables from data attributes
+function getAvailableAutoInstanceName(requestedName) {
+    const requested = String(requestedName || 'table');
+    const normalized = requested.replace(/[^A-Za-z0-9_$]/g, '_');
+    const baseName = (/^[A-Za-z_$]/.test(normalized) ? normalized : `table_${normalized}`) || 'table';
+    let candidate = baseName;
+    let suffix = 2;
+
+    // Inline handlers require an identifier stored on window. Never replace an
+    // application global or another table instance; choose a stable free alias.
+    while (candidate in window) {
+        candidate = `${baseName}_${suffix}`;
+        suffix += 1;
+    }
+    return candidate;
+}
+
+function registerAutoInstanceAlias(instance, alias) {
+    if (!alias || (alias in window && window[alias] !== instance)) return;
+    window[alias] = instance;
+    instance._globalAliases = instance._globalAliases || [];
+    if (!instance._globalAliases.includes(alias)) {
+        instance._globalAliases.push(alias);
+    }
+}
+
 function autoInitTables() {
     const tables = document.querySelectorAll('[data-integram-table]');
     tables.forEach(element => {
@@ -2759,26 +2784,25 @@ function autoInitTables() {
         // element does not accumulate duplicate requests and global listeners.
         if (element._integramTableInstance) return;
 
+        const requestedInstanceName = element.dataset.instanceName || element.id;
         const options = {
             apiUrl: element.dataset.apiUrl || '',
             pageSize: parseInt(element.dataset.pageSize) || 20,
             cookiePrefix: element.dataset.cookiePrefix || 'integram-table',
             title: element.dataset.title || '',
-            instanceName: element.dataset.instanceName || element.id,
+            instanceName: getAvailableAutoInstanceName(requestedInstanceName),
             dataSource: element.dataset.dataSource || 'report',
             tableTypeId: element.dataset.tableTypeId || null,
             parentId: element.dataset.parentId || null
         };
 
-        // Create instance and store in window if instanceName is provided
         const instance = new IntegramTable(element.id, options);
         element._integramTableInstance = instance;
-        if (options.instanceName) {
-            // Keep the legacy property for bracket-notation integrations, while
-            // inline handlers use the constructor-normalized safe identifier.
-            window[options.instanceName] = instance;
-            window[instance.options.instanceName] = instance;
-        }
+
+        // Preserve a free legacy bracket-notation alias, but never overwrite an
+        // existing global. Inline handlers always use the unique safe alias.
+        registerAutoInstanceAlias(instance, requestedInstanceName);
+        registerAutoInstanceAlias(instance, instance.options.instanceName);
 
         // Register instance in global registry
         if (typeof window !== 'undefined' && window._integramTableInstances) {

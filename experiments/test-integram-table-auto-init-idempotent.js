@@ -14,7 +14,7 @@ const source = fs.readFileSync(sourcePath, 'utf8');
 
 const element = {
     id: 'orders-table',
-    dataset: { instanceName: 'ordersTable' }
+    dataset: { instanceName: 'location' }
 };
 let domReadyHandler = null;
 
@@ -29,8 +29,9 @@ const documentStub = {
     },
     removeEventListener() {}
 };
+const originalLocation = { search: '', pathname: '/db/', hostname: 'localhost' };
 const windowStub = {
-    location: { search: '', pathname: '/db/', hostname: 'localhost' },
+    location: originalLocation,
     _integramTableInstances: []
 };
 
@@ -81,6 +82,10 @@ sandbox.autoInitTables();
 
 assert.strictEqual(initCalls, 1, 'the same element should initialize only once');
 assert.strictEqual(windowStub._integramTableInstances.length, 1, 'the global registry should not contain duplicates');
-assert.strictEqual(element._integramTableInstance, windowStub.ordersTable, 'the element should retain its instance');
+const instance = element._integramTableInstance;
+assert.strictEqual(windowStub.location, originalLocation, 'an existing window global should not be overwritten');
+assert.strictEqual(instance.options.instanceName, 'location_2', 'a collision should receive a unique safe alias');
+assert.strictEqual(windowStub.location_2, instance, 'the unique alias should expose the instance to inline handlers');
+assert.ok(instance._globalAliases.includes('location_2'), 'registered aliases should be tracked for cleanup');
 
-console.log('PASS: automatic table initialization is idempotent');
+console.log('PASS: automatic initialization is idempotent and collision-safe');
