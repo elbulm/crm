@@ -5,20 +5,29 @@
             const urlParams = new URLSearchParams(window.location.search);
             const urlParentId = urlParams.get('parentId') || urlParams.get('F_U') || urlParams.get('up');
             const urlRecordId = urlParams.get('F_I');  // Record ID filter from URL (issue #563)
+            const normalizeNumericId = candidate => {
+                const value = candidate === null || candidate === undefined ? '' : String(candidate).trim();
+                return /^\d+$/.test(value) ? value : null;
+            };
+            const requestedInstanceName = String(options.instanceName || 'table');
+            const normalizedInstanceName = requestedInstanceName.replace(/[^A-Za-z0-9_$]/g, '_');
+            const safeInstanceName = /^[A-Za-z_$]/.test(normalizedInstanceName)
+                ? normalizedInstanceName
+                : 'table_' + normalizedInstanceName;
 
             this.options = {
                 apiUrl: options.apiUrl || '',
                 pageSize: options.pageSize || 20,
                 cookiePrefix: options.cookiePrefix || 'integram-table',
                 title: options.title || '',
-                instanceName: options.instanceName || 'table',
+                instanceName: safeInstanceName || 'table',
                 onCellClick: options.onCellClick || null,
                 onDataLoad: options.onDataLoad || null,
                 // New options for dual data source support
                 dataSource: options.dataSource || 'report',  // 'report' or 'table'
                 tableTypeId: options.tableTypeId || null,   // Required for dataSource='table'
-                parentId: options.parentId || urlParentId || null,  // Parent ID for table data source
-                recordId: options.recordId || urlRecordId || null,  // Record ID filter for table data source (issue #563)
+                parentId: normalizeNumericId(options.parentId || urlParentId),  // Parent ID for table data source
+                recordId: normalizeNumericId(options.recordId || urlRecordId),  // Record ID filter for table data source (issue #563)
                 debug: options.debug || false  // Enable debug tracing
             };
 
@@ -197,6 +206,10 @@
         }
 
         pruneSelectedRows() {
+            if (!(this.selectedRows instanceof Set)) {
+                this.selectedRows = new Set();
+                return;
+            }
             const visibleKeys = new Set(this.getSelectableRowKeys());
             for (const key of this.selectedRows) {
                 if (!visibleKeys.has(key)) this.selectedRows.delete(key);
@@ -600,7 +613,8 @@
                 const parentTypeName = this.escapeHtml(this.parentInfo.type || '');
                 // #3247: первая колонка-DATETIME родителя приходит unix-штампом — форматируем.
                 const parentVal = this.escapeHtml(this.formatRecordTitleValue(this.parentInfo.val || ''));
-                const parentObjId = this.parentInfo.obj || '';
+                const parentObjValue = String(this.parentInfo.obj || '');
+                const parentObjId = /^\d+$/.test(parentObjValue) ? parentObjValue : '';
                 const parentUp = parseInt(this.parentInfo.up, 10) || 0;
                 const parentRecordId = this.options.parentId || '';
                 const currentTitle = this.escapeHtml(this.options.title || '');
@@ -918,7 +932,7 @@
             }
 
             if (!append) {
-                this.container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки данных: ${ message }</div>`;
+                this.container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки данных: ${ this.escapeHtml(message) }</div>`;
             } else {
                 this.showToast(`Ошибка загрузки данных: ${ message }`, 'error');
             }

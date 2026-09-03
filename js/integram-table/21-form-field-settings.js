@@ -36,7 +36,7 @@
             // Add draggable checkbox for each requisite
             sortedReqs.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const fieldId = req.id;
                 const isChecked = visibleFields[fieldId] !== false;
 

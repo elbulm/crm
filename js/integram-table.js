@@ -22,20 +22,29 @@ class IntegramTable{
             const urlParams = new URLSearchParams(window.location.search);
             const urlParentId = urlParams.get('parentId') || urlParams.get('F_U') || urlParams.get('up');
             const urlRecordId = urlParams.get('F_I');  // Record ID filter from URL (issue #563)
+            const normalizeNumericId = candidate => {
+                const value = candidate === null || candidate === undefined ? '' : String(candidate).trim();
+                return /^\d+$/.test(value) ? value : null;
+            };
+            const requestedInstanceName = String(options.instanceName || 'table');
+            const normalizedInstanceName = requestedInstanceName.replace(/[^A-Za-z0-9_$]/g, '_');
+            const safeInstanceName = /^[A-Za-z_$]/.test(normalizedInstanceName)
+                ? normalizedInstanceName
+                : 'table_' + normalizedInstanceName;
 
             this.options = {
                 apiUrl: options.apiUrl || '',
                 pageSize: options.pageSize || 20,
                 cookiePrefix: options.cookiePrefix || 'integram-table',
                 title: options.title || '',
-                instanceName: options.instanceName || 'table',
+                instanceName: safeInstanceName || 'table',
                 onCellClick: options.onCellClick || null,
                 onDataLoad: options.onDataLoad || null,
                 // New options for dual data source support
                 dataSource: options.dataSource || 'report',  // 'report' or 'table'
                 tableTypeId: options.tableTypeId || null,   // Required for dataSource='table'
-                parentId: options.parentId || urlParentId || null,  // Parent ID for table data source
-                recordId: options.recordId || urlRecordId || null,  // Record ID filter for table data source (issue #563)
+                parentId: normalizeNumericId(options.parentId || urlParentId),  // Parent ID for table data source
+                recordId: normalizeNumericId(options.recordId || urlRecordId),  // Record ID filter for table data source (issue #563)
                 debug: options.debug || false  // Enable debug tracing
             };
 
@@ -214,6 +223,10 @@ class IntegramTable{
         }
 
         pruneSelectedRows() {
+            if (!(this.selectedRows instanceof Set)) {
+                this.selectedRows = new Set();
+                return;
+            }
             const visibleKeys = new Set(this.getSelectableRowKeys());
             for (const key of this.selectedRows) {
                 if (!visibleKeys.has(key)) this.selectedRows.delete(key);
@@ -617,7 +630,8 @@ class IntegramTable{
                 const parentTypeName = this.escapeHtml(this.parentInfo.type || '');
                 // #3247: первая колонка-DATETIME родителя приходит unix-штампом — форматируем.
                 const parentVal = this.escapeHtml(this.formatRecordTitleValue(this.parentInfo.val || ''));
-                const parentObjId = this.parentInfo.obj || '';
+                const parentObjValue = String(this.parentInfo.obj || '');
+                const parentObjId = /^\d+$/.test(parentObjValue) ? parentObjValue : '';
                 const parentUp = parseInt(this.parentInfo.up, 10) || 0;
                 const parentRecordId = this.options.parentId || '';
                 const currentTitle = this.escapeHtml(this.options.title || '');
@@ -935,7 +949,7 @@ class IntegramTable{
             }
 
             if (!append) {
-                this.container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки данных: ${ message }</div>`;
+                this.container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки данных: ${ this.escapeHtml(message) }</div>`;
             } else {
                 this.showToast(`Ошибка загрузки данных: ${ message }`, 'error');
             }
@@ -2127,7 +2141,7 @@ class IntegramTable{
                                         })() : '';
                                         return `
                                             <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }>
-                                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ col.name }</span>
+                                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                                                 ${ refIconHtml }
                                                 ${ addButtonHtml }
                                                 <div class="column-resize-handle" data-column-id="${ col.id }"></div>
@@ -2254,7 +2268,7 @@ class IntegramTable{
                                 <input type="text"
                                        class="filter-input-with-icon filter-ref-text-input"
                                        data-column-id="${ column.id }"
-                                       value="${ displayValue }"
+                                       value="${ this.escapeHtml(displayValue) }"
                                        placeholder="${ placeholder }"
                                        autocomplete="off">
                             </div>
@@ -2393,7 +2407,7 @@ class IntegramTable{
                         <input type="text"
                                class="filter-input-with-icon"
                                data-column-id="${ column.id }"
-                               value="${ displayValue }"
+                               value="${ this.escapeHtml(displayValue) }"
                                placeholder="${ placeholder }"
                                autocomplete="off">
                     </div>
@@ -2631,7 +2645,10 @@ class IntegramTable{
                 if (styleColIndex !== -1 && this.data[rowIndex]) {
                     const styleValue = this.data[rowIndex][styleColIndex];
                     if (styleValue) {
-                        customStyle = ` style="${ styleValue }"`;
+                        const safeStyle = this.sanitizeCellStyle(styleValue);
+                        if (safeStyle) {
+                            customStyle = ` style="${ this.escapeHtml(safeStyle) }"`;
+                        }
                     }
                 }
             }
@@ -2713,46 +2730,54 @@ class IntegramTable{
                     if (value && value !== '') {
                         // Check if value is already an HTML anchor tag (from object/ endpoint)
                         if (typeof value === 'string' && value.trim().startsWith('<a')) {
-                            // Value is already HTML link - add file-link class and render as-is
-                            displayValue = value.replace('<a', '<a class="file-link"');
+                            // Preserve the server-provided link semantics after allow-list sanitization.
+                            const safeFileLink = this.sanitizeCellHtml(value);
+                            displayValue = safeFileLink.replace(/^<a\b/i, '<a class="file-link"');
                             return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
                         }
                         // Display as a download link if value is a path
                         const apiBase = this.getApiBase();
                         const fileName = value.split('/').pop() || value;
-                        displayValue = `<a href="${ apiBase }/file/${ value }" target="_blank" class="file-link" title="Скачать файл">${ this.escapeHtml(fileName) }</a>`;
+                        const encodedPath = String(value).split('/').map(segment => encodeURIComponent(segment)).join('/');
+                        const safeHref = this.escapeHtml(apiBase + '/file/' + encodedPath);
+                        displayValue = `<a href="${ safeHref }" target="_blank" rel="noopener noreferrer" class="file-link" title="Скачать файл">${ this.escapeHtml(fileName) }</a>`;
                         return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
                     }
                     break;
                 case 'HTML':
-                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
+                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ this.sanitizeCellHtml(displayValue) }</td>`;
                 case 'BUTTON': {
                     const pathParts = window.location.pathname.split('/');
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
-                    let recordId = null;
-                    if (this.rawObjectData && this.rawObjectData[rowIndex]) {
-                        recordId = this.rawObjectData[rowIndex].i;
-                    }
-                    const btnValue = value !== null && value !== undefined ? String(value) : '';
-                    let btnHref, btnTarget, btnOnclick;
-                    if (btnValue.match(/^https?:\/\//i)) {
-                        btnHref = btnValue;
-                        btnTarget = recordId !== null ? String(recordId) : '_blank';
-                    } else if (btnValue.match(/^\w[\w.]*\s*\([\s\S]*\)\s*;?\s*$/)) {
-                        // Value is a JS function call (e.g. newApi('POST','...','','reloadAllIntegramTables'))
-                        btnOnclick = btnValue.replace(/;?\s*$/, '') + '; event.stopPropagation();';
+                    const btnValue = value !== null && value !== undefined ? String(value).trim() : '';
+                    const parsedAction = this.parseButtonAction(btnValue);
+                    let buttonHtml = '';
+
+                    if (parsedAction) {
+                        const actionAttr = this.escapeHtml(btnValue);
+                        buttonHtml = `<button type="button" class="btn btn-sm btn-primary integram-action-button" data-button-action="${ actionAttr }" title="Выполнить действие"><i class="pi pi-play"></i></button>`;
                     } else if (btnValue) {
-                        btnHref = `/${dbName}/${btnValue.replace(/^\//, '')}`;
-                        btnTarget = '_blank';
+                        const candidate = /^https?:\/\//i.test(btnValue)
+                            ? btnValue
+                            : '/' + encodeURIComponent(dbName) + '/' + btnValue.replace(/^\/+/, '');
+                        try {
+                            const url = new URL(candidate, window.location.origin);
+                            if (url.protocol === 'http:' || url.protocol === 'https:') {
+                                const href = url.origin === window.location.origin
+                                    ? url.pathname + url.search + url.hash
+                                    : url.href;
+                                const safeHref = this.escapeHtml(href);
+                                buttonHtml = `<a href="${ safeHref }" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary" title="Открыть"><i class="pi pi-play"></i></a>`;
+                            }
+                        } catch (error) {
+                            console.warn('[integram-table] Invalid BUTTON URL blocked', error);
+                        }
                     }
-                    if (btnOnclick) {
-                        displayValue = `<button class="btn btn-sm btn-primary" onclick="${ btnOnclick.replace(/"/g, '&quot;') }"><i class="pi pi-play"></i></button>`;
-                    } else if (btnHref) {
-                        displayValue = `<a href="${ btnHref }" target="${ btnTarget }" onclick="event.stopPropagation();"><button class="btn btn-sm btn-primary"><i class="pi pi-play"></i></button></a>`;
-                    } else {
-                        displayValue = `<button class="btn btn-sm btn-primary"><i class="pi pi-play"></i></button>`;
+
+                    if (!buttonHtml) {
+                        buttonHtml = '<button type="button" class="btn btn-sm btn-primary" disabled title="Небезопасное действие заблокировано"><i class="pi pi-play"></i></button>';
                     }
-                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle } style="text-align: center;">${ displayValue }</td>`;
+                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle } style="text-align: center;">${ buttonHtml }</td>`;
                 }
             }
 
@@ -3338,7 +3363,7 @@ class IntegramTable{
                         })() : '';
                         rows[depth].push(`
                             <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
-                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ displayName }</span>
+                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
                                 <div class="column-resize-handle" data-column-id="${ col.id }"></div>
@@ -3348,7 +3373,7 @@ class IntegramTable{
                         // Display prefix with dots replaced by spaces (issue #1565)
                         const displayPrefix = node.prefix.replace(/\./g, ' ');
                         rows[depth].push(`
-                            <th class="smart-header-group" colspan="${ node.span }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ displayPrefix }</th>
+                            <th class="smart-header-group" colspan="${ node.span }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ this.escapeHtml(displayPrefix) }</th>
                         `);
                         visit(node.children, depth + 1);
                     }
@@ -3403,7 +3428,7 @@ class IntegramTable{
 
                 return `
                     <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle } class="${ groupingClass }">
-                        <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ col.name }</span>
+                        <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                         ${ refIconHtml }
                         ${ addButtonHtml }
                         <div class="column-resize-handle" data-column-id="${ col.id }"></div>
@@ -4299,10 +4324,19 @@ class IntegramTable{
                     const link = event.target.closest && event.target.closest('.show-full-value');
                     if (!link || !this.container.contains(link)) return;
                     event.preventDefault();
-                    event.stopPropagation();
+                    event.stopImmediatePropagation();
                     this.showFullValue(event, link.dataset.fullValue || '');
                 };
                 this.container.addEventListener('click', this._fullValueClickHandler);
+            }
+
+            if (!this._tableButtonClickHandler) {
+                this._tableButtonClickHandler = (event) => {
+                    const button = event.target.closest && event.target.closest('.integram-action-button[data-button-action]');
+                    if (!button || !this.container.contains(button)) return;
+                    this.runTableButtonAction(event, button);
+                };
+                this.container.addEventListener('click', this._tableButtonClickHandler);
             }
 
             // Determine the first visible column ID — it cannot be moved (issue #951)
@@ -6289,7 +6323,7 @@ class IntegramTable{
             // Store reference to overlay on modal for proper cleanup
             modal._overlayElement = overlay;
 
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const title = `Создание: ${typeName}`;
             const decodedInitialValue = this.decodeHtmlEntities(initialValue);
 
@@ -6351,7 +6385,7 @@ class IntegramTable{
             // Add all fields of this type
             regularFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const isRequired = attrs.required;
 
                 attributesHtml += `<div class="form-group">`;
@@ -9987,16 +10021,19 @@ class IntegramTable{
                 recordId = this.rawObjectData[rowIndex].i;
             }
 
-            if (!recordId) {
+            if (!recordId || !/^\d+$/.test(String(recordId))) {
                 return `<td class="references-column-cell"></td>`;
             }
 
             const pathParts = window.location.pathname.split('/');
-            const dbName = pathParts.length >= 2 ? pathParts[1] : '';
+            const dbName = pathParts.length >= 2 ? encodeURIComponent(pathParts[1]) : '';
 
             const links = backRefs.map(ref => {
-                const href = `/${dbName}/table/${ref.tableId}?FR_${ref.fieldId}=@${recordId}`;
-                const label = `${ref.tableName}.${ref.fieldName}`;
+                const tableId = String(ref.tableId || '');
+                const fieldId = String(ref.fieldId || '');
+                if (!/^\d+$/.test(tableId) || !/^\d+$/.test(fieldId)) return '';
+                const href = `/${dbName}/table/${tableId}?FR_${fieldId}=@${recordId}`;
+                const label = this.escapeHtml(`${ref.tableName}.${ref.fieldName}`);
                 return `<a href="${href}" class="reference-link" style="color: #9ca3af;" title="${label}">${label}</a>`;
             }).join(', ');
 
@@ -10108,7 +10145,7 @@ class IntegramTable{
                                            data-column-id="${ col.id }"
                                            ${ isSelected ? 'checked' : '' }>
                                     <span class="grouping-order-badge" style="${ isSelected ? '' : 'display: none;' }">${ order }</span>
-                                    ${ col.name }
+                                    ${ this.escapeHtml(col.name) }
                                 </label>
                             </div>
                         `;
@@ -11024,6 +11061,8 @@ class IntegramTable{
 
             const instanceName = this.options.instanceName;
             const badges = hiddenFilters.map(hf => {
+                const colId = String(hf.colId || '');
+                if (!/^\d+$/.test(colId)) return '';
                 const filterTypeSymbol = hf.filter.type || '^';
                 // Use resolved text label for @id-based filters when available (issue #551)
                 const activeFilter = this.filters[hf.colId];
@@ -11033,10 +11072,10 @@ class IntegramTable{
                 const displayValue = resolvedLabel ? `${filterTypeSymbol} ${resolvedLabel}` : filterTypeSymbol;
 
                 return `
-                    <span class="hidden-filter-badge" data-col-id="${hf.colId}">
-                        <span class="hidden-filter-badge-name">${hf.colName}</span>
-                        <span class="hidden-filter-badge-value">${displayValue}</span>
-                        <span class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${hf.colId}')" title="Удалить фильтр"><i class="pi pi-times"></i></span>
+                    <span class="hidden-filter-badge" data-col-id="${colId}">
+                        <span class="hidden-filter-badge-name">${this.escapeHtml(hf.colName)}</span>
+                        <span class="hidden-filter-badge-value">${this.escapeHtml(displayValue)}</span>
+                        <span class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${colId}')" title="Удалить фильтр"><i class="pi pi-times"></i></span>
                     </span>
                 `;
             }).join('');
@@ -12409,21 +12448,22 @@ class IntegramTable{
             // Store reference to overlay on modal for proper cleanup
             modal._overlayElement = overlay;
 
-            const typeName = this.getMetadataName(metadata);
+            const rawTypeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(rawTypeName);
             const firstColumnValue = !isCreate && recordData && recordData.obj ? recordData.obj.val : null;
             // #3774: если главное значение таблицы — DATETIME, API отдаёт его unix-штампом —
             // в заголовке показываем дату-время (как в .integram-title-link, #3247), а не штамп.
             // Сырое firstColumnValue не меняем: оно идёт в dataset (имя для пароль-приглашения
             // #1481) и сравнения; форматируем только видимый текст заголовка/вкладки браузера.
             const firstColumnDisplay = firstColumnValue != null ? this.formatRecordTitleValue(firstColumnValue) : null;
-            const title = isCreate ? `Создание: ${ typeName }` : `Редактирование: ${ firstColumnDisplay || typeName }`;
+            const title = isCreate ? `Создание: ${ typeName }` : `Редактирование: ${ this.escapeHtml(firstColumnDisplay || rawTypeName) }`;
             const instanceName = this.options.instanceName;
 
             // Save and update navbar-workspace + document.title with object value
             const navbarWorkspace = document.querySelector('.navbar-workspace');
             const prevWorkspaceText = navbarWorkspace ? navbarWorkspace.textContent : null;
             const prevDocTitle = document.title;
-            const objectValue = firstColumnDisplay || typeName;
+            const objectValue = firstColumnDisplay || rawTypeName;
             const truncatedValue = objectValue && objectValue.length > 32 ? objectValue.slice(0, 32) + '...' : objectValue;
             if (navbarWorkspace) navbarWorkspace.textContent = truncatedValue;
             document.title = truncatedValue;
@@ -12473,7 +12513,7 @@ class IntegramTable{
 
                 subordinateTables.forEach(req => {
                     const attrs = this.parseAttrs(req.attrs);
-                    const fieldName = attrs.alias || req.val;
+                    const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                     const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
                     tabsHtml += `<div class="edit-form-tab" data-tab="sub-${ req.id }" data-arr-id="${ req.arr_id }" data-req-id="${ req.id }">${ fieldName } (${ arrCount })</div>`;
                 });
@@ -12722,7 +12762,7 @@ class IntegramTable{
             const mainFieldReadOnly = formIsReadOnly;
 
             // Main value field - render according to base type
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const mainValue = recordData && recordData.obj ? recordData.obj.val : '';
             // For GRANT/REPORT_COLUMN fields, use term from API response for dropdown pre-selection (issue #583)
             // Issue #3572: для подчинённой таблицы значение «Объекты» может прийти меткой
@@ -12832,7 +12872,7 @@ class IntegramTable{
 
             sortedFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const storedValue = recordReqs[req.id] ? recordReqs[req.id].value : '';
                 const baseTypeId = recordReqs[req.id] ? recordReqs[req.id].base : req.type;
                 const baseFormat = this.normalizeFormat(baseTypeId);
@@ -13406,7 +13446,7 @@ class IntegramTable{
                 modal.style.zIndex = baseZIndex + 1;
                 modal.dataset.modalDepth = modalDepth;
 
-                const typeName = this.getMetadataName(metadata);
+                const typeName = this.escapeHtml(this.getMetadataName(metadata));
                 const headerTitle = parentRecordValue ? `${ this.escapeHtml(parentRecordValue) } / ${ typeName }` : typeName;
 
                 modal.innerHTML = `
@@ -13577,7 +13617,7 @@ class IntegramTable{
                     const sortPriority = sortInfo ? sortState.indexOf(sortInfo) + 1 : '';
                     const priorityBadge = sortState.length > 1 && sortPriority ? `<span class="subordinate-sort-priority">${ sortPriority }</span>` : '';
 
-                    html += `<th class="subordinate-sortable-header" data-col-index="${ colIdx }">${ col.name }${ sortIndicator }${ priorityBadge }</th>`;
+                    html += `<th class="subordinate-sortable-header" data-col-index="${ colIdx }">${ this.escapeHtml(col.name) }${ sortIndicator }${ priorityBadge }</th>`;
                 });
 
                 html += `</tr></thead><tbody>`;
@@ -14377,8 +14417,8 @@ class IntegramTable{
                     case 'FILE':
                         // Check if value is already an HTML anchor tag (from object/ endpoint)
                         if (typeof value === 'string' && value.trim().startsWith('<a')) {
-                            // Value is already HTML link - add file-link class and return as-is
-                            return value.replace('<a', '<a class="file-link"');
+                            // Preserve the link after allow-list sanitization.
+                            return this.sanitizeCellHtml(value).replace(/^<a\b/i, '<a class="file-link"');
                         }
                         break;
                 }
@@ -14438,7 +14478,7 @@ class IntegramTable{
             const cascadeOffset = (modalDepth - 1) * 6;
             modal.style.transform = `translate(calc(-50% + ${cascadeOffset}px), calc(-50% + ${cascadeOffset}px))`;
 
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const title = `Создание: ${ typeName }`;
 
             // Build form for regular fields only (no nested subordinate tables in create mode)
@@ -14505,7 +14545,7 @@ class IntegramTable{
 
             regularFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const baseFormat = this.normalizeFormat(req.type);
                 const isRequired = attrs.required;
                 const isMulti = attrs.multi;
@@ -16020,7 +16060,7 @@ class IntegramTable{
 
             modal._overlayElement = overlay;
 
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const title = `Создание: ${typeName}`;
             const decodedInitialValue = this.decodeHtmlEntities(initialValue);
 
@@ -16074,7 +16114,7 @@ class IntegramTable{
 
             regularFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const isRequired = attrs.required;
 
                 attributesHtml += `<div class="form-group">`;
@@ -16340,7 +16380,7 @@ class IntegramTable{
             // Add draggable checkbox for each requisite
             sortedReqs.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const fieldId = req.id;
                 const isChecked = visibleFields[fieldId] !== false;
 
@@ -17554,6 +17594,164 @@ class IntegramTable{
                               .replace(/>/g, '&gt;')
                               .replace(/"/g, '&quot;')
                               .replace(/'/g, '&#039;');
+        }
+
+        /**
+         * Allow only presentation-oriented CSS declarations in STYLE companion
+         * columns. Attribute delimiters, resource loads and legacy script-capable
+         * CSS constructs are rejected.
+         */
+        sanitizeCellStyle(styleText) {
+            if (styleText === null || styleText === undefined) return '';
+
+            const allowedProperties = new Set([
+                'color', 'background', 'background-color',
+                'font-weight', 'font-style', 'font-size', 'font-family',
+                'text-align', 'text-decoration', 'text-transform',
+                'vertical-align', 'white-space', 'overflow', 'text-overflow',
+                'border', 'border-color', 'border-style', 'border-width', 'border-radius',
+                'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+                'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+                'width', 'min-width', 'max-width', 'height', 'min-height', 'max-height',
+                'opacity'
+            ]);
+            const unsafeValue = /(?:url\s*\(|expression\s*\(|javascript\s*:|data\s*:|@import|[<>"'\\])/i;
+            const safeDeclarations = [];
+
+            for (const declaration of String(styleText).split(';')) {
+                const separator = declaration.indexOf(':');
+                if (separator <= 0) continue;
+
+                const property = declaration.slice(0, separator).trim().toLowerCase();
+                const value = declaration.slice(separator + 1).trim();
+                if (!allowedProperties.has(property) || !value || unsafeValue.test(value)) continue;
+                safeDeclarations.push(property + ': ' + value);
+            }
+
+            return safeDeclarations.join('; ');
+        }
+
+        /**
+         * Sanitize rich HTML cells with a small formatting allow-list.
+         * Unknown elements are converted to text and all event/style attributes
+         * are removed. Links are restricted to ordinary web/mail/relative URLs.
+         */
+        sanitizeCellHtml(html) {
+            if (html === null || html === undefined) return '';
+            if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+                return this.escapeHtml(html);
+            }
+
+            const template = document.createElement('template');
+            template.innerHTML = String(html);
+            const allowedTags = new Set([
+                'A', 'B', 'BR', 'CODE', 'DIV', 'EM', 'I', 'LI', 'OL', 'P', 'PRE',
+                'SPAN', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL'
+            ]);
+
+            for (const element of Array.from(template.content.querySelectorAll('*'))) {
+                const tag = element.tagName.toUpperCase();
+                if (!allowedTags.has(tag)) {
+                    const textNode = document.createTextNode(element.textContent || '');
+                    if (element.parentNode) element.parentNode.replaceChild(textNode, element);
+                    continue;
+                }
+
+                const href = tag === 'A' ? String(element.getAttribute('href') || '').trim() : '';
+                const title = String(element.getAttribute('title') || '').trim();
+                const colspan = tag === 'TD' || tag === 'TH' ? element.getAttribute('colspan') : null;
+                const rowspan = tag === 'TD' || tag === 'TH' ? element.getAttribute('rowspan') : null;
+                for (const attribute of Array.from(element.attributes)) {
+                    element.removeAttribute(attribute.name);
+                }
+
+                if (title) element.setAttribute('title', title);
+                if (tag === 'A' && /^(?:https?:\/\/|mailto:|\/|#)/i.test(href)) {
+                    element.setAttribute('href', href);
+                    element.setAttribute('target', '_blank');
+                    element.setAttribute('rel', 'noopener noreferrer');
+                }
+                if (colspan && /^\d{1,2}$/.test(colspan)) element.setAttribute('colspan', colspan);
+                if (rowspan && /^\d{1,2}$/.test(rowspan)) element.setAttribute('rowspan', rowspan);
+            }
+
+            return template.innerHTML;
+        }
+
+        /**
+         * Parse the legacy BUTTON newApi(...) form without eval or Function.
+         * Only scalar literal arguments are accepted.
+         */
+        parseButtonAction(value) {
+            const match = String(value || '').trim().match(/^newApi\s*\(([\s\S]*)\)\s*;?$/);
+            if (!match || match[1].trim().endsWith(',')) return null;
+
+            const source = match[1];
+            const args = [];
+            let index = 0;
+            const skipWhitespace = () => {
+                while (index < source.length && /\s/.test(source[index])) index++;
+            };
+
+            while (index < source.length) {
+                skipWhitespace();
+                if (index >= source.length) break;
+
+                const quote = source[index];
+                if (quote === "'" || quote === '"') {
+                    index++;
+                    let parsed = '';
+                    let closed = false;
+                    while (index < source.length) {
+                        const char = source[index++];
+                        if (char === '\\') {
+                            if (index >= source.length) return null;
+                            const escaped = source[index++];
+                            const escapeMap = { n: '\n', r: '\r', t: '\t' };
+                            parsed += Object.prototype.hasOwnProperty.call(escapeMap, escaped) ? escapeMap[escaped] : escaped;
+                        } else if (char === quote) {
+                            closed = true;
+                            break;
+                        } else {
+                            parsed += char;
+                        }
+                    }
+                    if (!closed) return null;
+                    args.push(parsed);
+                } else {
+                    const start = index;
+                    while (index < source.length && source[index] !== ',') index++;
+                    const token = source.slice(start, index).trim();
+                    if (/^-?(?:\d+|\d*\.\d+)$/.test(token)) args.push(Number(token));
+                    else if (token === 'true') args.push(true);
+                    else if (token === 'false') args.push(false);
+                    else if (token === 'null') args.push(null);
+                    else return null;
+                }
+
+                skipWhitespace();
+                if (index >= source.length) break;
+                if (source[index] !== ',') return null;
+                index++;
+            }
+
+            if (args.length < 2 || args.length > 5) return null;
+            if (typeof args[0] !== 'string' || !/^(?:GET|POST|PUT|PATCH|DELETE)$/i.test(args[0])) return null;
+            if (typeof args[1] !== 'string' || /^\s*(?:javascript|data|vbscript):/i.test(args[1])) return null;
+            return args;
+        }
+
+        runTableButtonAction(event, button) {
+            if (event) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+            const args = this.parseButtonAction(button && button.dataset ? button.dataset.buttonAction : '');
+            if (!args || typeof window.newApi !== 'function') {
+                this.showToast('Небезопасное или неподдерживаемое действие кнопки заблокировано', 'error');
+                return;
+            }
+            window.newApi.apply(window, args);
         }
 
         decodeHtmlEntities(text) {
@@ -19763,7 +19961,7 @@ class IntegramCreateFormHelper {
         // Store reference to overlay on modal for proper cleanup
         modal._overlayElement = overlay;
 
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const title = `Создание: ${typeName}`;
 
         // Build parent info subtitle HTML if parentInfo is provided
@@ -19883,7 +20081,7 @@ class IntegramCreateFormHelper {
         const currentDateTimeDisplay = currentDateDisplay + ' ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); // DD.MM.YYYY HH:MM
 
         // Main value field - render according to base type
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const mainValue = recordData && recordData.obj ? recordData.obj.val || '' : '';
         // For GRANT/REPORT_COLUMN fields, use term from API response for dropdown pre-selection (issue #583)
         const mainTermValue = recordData && recordData.obj && recordData.obj.term !== undefined ? recordData.obj.term : '';
@@ -19943,7 +20141,7 @@ class IntegramCreateFormHelper {
         // Render requisite fields
         regularFields.forEach(req => {
             const attrs = this.parseAttrs(req.attrs);
-            const fieldName = attrs.alias || req.val;
+            const fieldName = this.escapeHtml(attrs.alias || req.val || '');
             const reqValue = recordReqs[req.id] ? recordReqs[req.id].value || '' : '';
             const baseTypeId = recordReqs[req.id] ? recordReqs[req.id].base || req.type : req.type;
             const baseFormat = this.normalizeFormat(baseTypeId);
@@ -20777,10 +20975,10 @@ class IntegramCreateFormHelper {
         // Store reference to overlay on modal for proper cleanup
         modal._overlayElement = overlay;
 
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const recordVal = recordData && recordData.obj ? recordData.obj.val : '';
         // #3774: DATETIME-главное-значение → дата-время вместо unix-штампа.
-        const title = `Редактирование: ${this.formatRecordTitleValue(recordVal) || typeName}`;
+        const title = `Редактирование: ${this.escapeHtml(this.formatRecordTitleValue(recordVal)) || typeName}`;
         const parentId = recordData && recordData.obj ? recordData.obj.parent : 1;
 
         // Build record ID link HTML
@@ -20812,7 +21010,7 @@ class IntegramCreateFormHelper {
 
             subordinateTables.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
                 tabsHtml += `<div class="edit-form-tab" data-tab="sub-${req.id}" data-arr-id="${req.arr_id}" data-req-id="${req.id}">${fieldName} (${arrCount})</div>`;
             });
@@ -21080,7 +21278,7 @@ class IntegramCreateFormHelper {
      * Uses the same CSS classes as the main renderSubordinateTable method.
      */
     renderSubordinateTableStandalone(container, metadata, data, arrId, parentRecordId) {
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const records = Array.isArray(data) ? data : [];
         const reqs = metadata.reqs || [];
 
@@ -21113,12 +21311,12 @@ class IntegramCreateFormHelper {
             html += `<div class="subordinate-table-wrapper"><table class="subordinate-table"><thead><tr>`;
 
             // Header: main value column + requisite columns
-            html += `<th>${this.escapeHtml(typeName)}</th>`;
+            html += `<th>${typeName}</th>`;
             reqs.forEach(req => {
                 if (!req.arr_id) {
                     const attrs = this.parseAttrs(req.attrs);
-                    const fieldName = attrs.alias || req.val;
-                    html += `<th>${this.escapeHtml(fieldName)}</th>`;
+                    const fieldName = this.escapeHtml(attrs.alias || req.val || '');
+                    html += `<th>${fieldName}</th>`;
                 }
             });
             html += `</tr></thead><tbody>`;
@@ -21253,7 +21451,7 @@ class IntegramCreateFormHelper {
 
         // Значение из object/ приходит готовым тегом <a> — не экранируем, добавляем класс
         if (format === 'FILE' && typeof value === 'string' && value.trim().startsWith('<a')) {
-            return value.replace('<a', '<a class="file-link"');
+            return IntegramTable.prototype.sanitizeCellHtml.call(this, value).replace(/^<a\b/i, '<a class="file-link"');
         }
 
         const date = formatIntegramDateCellPlain(value, format);
@@ -21531,7 +21729,7 @@ class IntegramCreateFormHelper {
         sortedReqs.forEach(req => {
             if (req.arr_id) return; // Skip subordinate tables
             const attrs = this.parseAttrs(req.attrs);
-            const fieldName = attrs.alias || req.val;
+            const fieldName = this.escapeHtml(attrs.alias || req.val || '');
             const fieldId = req.id;
             const isChecked = visibleFields[fieldId] !== false;
 
@@ -21543,7 +21741,7 @@ class IntegramCreateFormHelper {
                                class="form-field-visibility-checkbox"
                                data-field-id="${fieldId}"
                                ${isChecked ? 'checked' : ''}>
-                        <span>${this.escapeHtml(fieldName)}</span>
+                        <span>${fieldName}</span>
                     </label>
                 </div>
             `;
@@ -21746,7 +21944,7 @@ class IntegramCreateFormHelper {
         let html = '';
 
         // Main value field
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const mainValue = recordData && recordData.obj ? recordData.obj.val || '' : '';
         // Issue #3572: подчинённый объект «Объекты» может прийти меткой без term-префикса
         // «id:» — тогда отдаём метку (опции грантов матчатся по id ИЛИ по метке).
@@ -21784,7 +21982,7 @@ class IntegramCreateFormHelper {
 
         html += `
             <div class="form-field">
-                <label for="field-main">${this.escapeHtml(typeName)}</label>
+                <label for="field-main">${typeName}</label>
                 ${mainFieldHtml}
             </div>
         `;
@@ -21793,7 +21991,7 @@ class IntegramCreateFormHelper {
         for (const req of regularFields) {
             const fieldId = req.id;
             const attrs = this.parseAttrs(req.attrs);
-            const fieldName = attrs.alias || req.val;
+            const fieldName = this.escapeHtml(attrs.alias || req.val || '');
             const isRequired = attrs.required;
             const isMulti = attrs.multi;
             const fieldType = this.normalizeFormat(req.type);
@@ -21930,7 +22128,7 @@ class IntegramCreateFormHelper {
 
             html += `
                 <div class="form-field">
-                    <label for="field-${fieldId}">${this.escapeHtml(fieldName)} ${requiredMark}</label>
+                    <label for="field-${fieldId}">${fieldName} ${requiredMark}</label>
                     ${fieldHtml}
                 </div>
             `;
@@ -22219,7 +22417,10 @@ function autoInitTables() {
         // Create instance and store in window if instanceName is provided
         const instance = new IntegramTable(element.id, options);
         if (options.instanceName) {
+            // Keep the legacy property for bracket-notation integrations, while
+            // inline handlers use the constructor-normalized safe identifier.
             window[options.instanceName] = instance;
+            window[instance.options.instanceName] = instance;
         }
 
         // Register instance in global registry

@@ -263,10 +263,19 @@
                     const link = event.target.closest && event.target.closest('.show-full-value');
                     if (!link || !this.container.contains(link)) return;
                     event.preventDefault();
-                    event.stopPropagation();
+                    event.stopImmediatePropagation();
                     this.showFullValue(event, link.dataset.fullValue || '');
                 };
                 this.container.addEventListener('click', this._fullValueClickHandler);
+            }
+
+            if (!this._tableButtonClickHandler) {
+                this._tableButtonClickHandler = (event) => {
+                    const button = event.target.closest && event.target.closest('.integram-action-button[data-button-action]');
+                    if (!button || !this.container.contains(button)) return;
+                    this.runTableButtonAction(event, button);
+                };
+                this.container.addEventListener('click', this._tableButtonClickHandler);
             }
 
             // Determine the first visible column ID — it cannot be moved (issue #951)
@@ -2253,7 +2262,7 @@
             // Store reference to overlay on modal for proper cleanup
             modal._overlayElement = overlay;
 
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const title = `Создание: ${typeName}`;
             const decodedInitialValue = this.decodeHtmlEntities(initialValue);
 
@@ -2315,7 +2324,7 @@
             // Add all fields of this type
             regularFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const isRequired = attrs.required;
 
                 attributesHtml += `<div class="form-group">`;

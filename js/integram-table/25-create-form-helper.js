@@ -284,7 +284,7 @@ class IntegramCreateFormHelper {
         // Store reference to overlay on modal for proper cleanup
         modal._overlayElement = overlay;
 
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const title = `Создание: ${typeName}`;
 
         // Build parent info subtitle HTML if parentInfo is provided
@@ -404,7 +404,7 @@ class IntegramCreateFormHelper {
         const currentDateTimeDisplay = currentDateDisplay + ' ' + now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); // DD.MM.YYYY HH:MM
 
         // Main value field - render according to base type
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const mainValue = recordData && recordData.obj ? recordData.obj.val || '' : '';
         // For GRANT/REPORT_COLUMN fields, use term from API response for dropdown pre-selection (issue #583)
         const mainTermValue = recordData && recordData.obj && recordData.obj.term !== undefined ? recordData.obj.term : '';
@@ -464,7 +464,7 @@ class IntegramCreateFormHelper {
         // Render requisite fields
         regularFields.forEach(req => {
             const attrs = this.parseAttrs(req.attrs);
-            const fieldName = attrs.alias || req.val;
+            const fieldName = this.escapeHtml(attrs.alias || req.val || '');
             const reqValue = recordReqs[req.id] ? recordReqs[req.id].value || '' : '';
             const baseTypeId = recordReqs[req.id] ? recordReqs[req.id].base || req.type : req.type;
             const baseFormat = this.normalizeFormat(baseTypeId);
@@ -1298,10 +1298,10 @@ class IntegramCreateFormHelper {
         // Store reference to overlay on modal for proper cleanup
         modal._overlayElement = overlay;
 
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const recordVal = recordData && recordData.obj ? recordData.obj.val : '';
         // #3774: DATETIME-главное-значение → дата-время вместо unix-штампа.
-        const title = `Редактирование: ${this.formatRecordTitleValue(recordVal) || typeName}`;
+        const title = `Редактирование: ${this.escapeHtml(this.formatRecordTitleValue(recordVal)) || typeName}`;
         const parentId = recordData && recordData.obj ? recordData.obj.parent : 1;
 
         // Build record ID link HTML
@@ -1333,7 +1333,7 @@ class IntegramCreateFormHelper {
 
             subordinateTables.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
                 tabsHtml += `<div class="edit-form-tab" data-tab="sub-${req.id}" data-arr-id="${req.arr_id}" data-req-id="${req.id}">${fieldName} (${arrCount})</div>`;
             });
@@ -1601,7 +1601,7 @@ class IntegramCreateFormHelper {
      * Uses the same CSS classes as the main renderSubordinateTable method.
      */
     renderSubordinateTableStandalone(container, metadata, data, arrId, parentRecordId) {
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const records = Array.isArray(data) ? data : [];
         const reqs = metadata.reqs || [];
 
@@ -1634,12 +1634,12 @@ class IntegramCreateFormHelper {
             html += `<div class="subordinate-table-wrapper"><table class="subordinate-table"><thead><tr>`;
 
             // Header: main value column + requisite columns
-            html += `<th>${this.escapeHtml(typeName)}</th>`;
+            html += `<th>${typeName}</th>`;
             reqs.forEach(req => {
                 if (!req.arr_id) {
                     const attrs = this.parseAttrs(req.attrs);
-                    const fieldName = attrs.alias || req.val;
-                    html += `<th>${this.escapeHtml(fieldName)}</th>`;
+                    const fieldName = this.escapeHtml(attrs.alias || req.val || '');
+                    html += `<th>${fieldName}</th>`;
                 }
             });
             html += `</tr></thead><tbody>`;
@@ -1774,7 +1774,7 @@ class IntegramCreateFormHelper {
 
         // Значение из object/ приходит готовым тегом <a> — не экранируем, добавляем класс
         if (format === 'FILE' && typeof value === 'string' && value.trim().startsWith('<a')) {
-            return value.replace('<a', '<a class="file-link"');
+            return IntegramTable.prototype.sanitizeCellHtml.call(this, value).replace(/^<a\b/i, '<a class="file-link"');
         }
 
         const date = formatIntegramDateCellPlain(value, format);
@@ -2052,7 +2052,7 @@ class IntegramCreateFormHelper {
         sortedReqs.forEach(req => {
             if (req.arr_id) return; // Skip subordinate tables
             const attrs = this.parseAttrs(req.attrs);
-            const fieldName = attrs.alias || req.val;
+            const fieldName = this.escapeHtml(attrs.alias || req.val || '');
             const fieldId = req.id;
             const isChecked = visibleFields[fieldId] !== false;
 
@@ -2064,7 +2064,7 @@ class IntegramCreateFormHelper {
                                class="form-field-visibility-checkbox"
                                data-field-id="${fieldId}"
                                ${isChecked ? 'checked' : ''}>
-                        <span>${this.escapeHtml(fieldName)}</span>
+                        <span>${fieldName}</span>
                     </label>
                 </div>
             `;
@@ -2267,7 +2267,7 @@ class IntegramCreateFormHelper {
         let html = '';
 
         // Main value field
-        const typeName = this.getMetadataName(metadata);
+        const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const mainValue = recordData && recordData.obj ? recordData.obj.val || '' : '';
         // Issue #3572: подчинённый объект «Объекты» может прийти меткой без term-префикса
         // «id:» — тогда отдаём метку (опции грантов матчатся по id ИЛИ по метке).
@@ -2305,7 +2305,7 @@ class IntegramCreateFormHelper {
 
         html += `
             <div class="form-field">
-                <label for="field-main">${this.escapeHtml(typeName)}</label>
+                <label for="field-main">${typeName}</label>
                 ${mainFieldHtml}
             </div>
         `;
@@ -2314,7 +2314,7 @@ class IntegramCreateFormHelper {
         for (const req of regularFields) {
             const fieldId = req.id;
             const attrs = this.parseAttrs(req.attrs);
-            const fieldName = attrs.alias || req.val;
+            const fieldName = this.escapeHtml(attrs.alias || req.val || '');
             const isRequired = attrs.required;
             const isMulti = attrs.multi;
             const fieldType = this.normalizeFormat(req.type);
@@ -2451,7 +2451,7 @@ class IntegramCreateFormHelper {
 
             html += `
                 <div class="form-field">
-                    <label for="field-${fieldId}">${this.escapeHtml(fieldName)} ${requiredMark}</label>
+                    <label for="field-${fieldId}">${fieldName} ${requiredMark}</label>
                     ${fieldHtml}
                 </div>
             `;
@@ -2740,7 +2740,10 @@ function autoInitTables() {
         // Create instance and store in window if instanceName is provided
         const instance = new IntegramTable(element.id, options);
         if (options.instanceName) {
+            // Keep the legacy property for bracket-notation integrations, while
+            // inline handlers use the constructor-normalized safe identifier.
             window[options.instanceName] = instance;
+            window[instance.options.instanceName] = instance;
         }
 
         // Register instance in global registry

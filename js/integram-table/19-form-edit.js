@@ -28,21 +28,22 @@
             // Store reference to overlay on modal for proper cleanup
             modal._overlayElement = overlay;
 
-            const typeName = this.getMetadataName(metadata);
+            const rawTypeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(rawTypeName);
             const firstColumnValue = !isCreate && recordData && recordData.obj ? recordData.obj.val : null;
             // #3774: если главное значение таблицы — DATETIME, API отдаёт его unix-штампом —
             // в заголовке показываем дату-время (как в .integram-title-link, #3247), а не штамп.
             // Сырое firstColumnValue не меняем: оно идёт в dataset (имя для пароль-приглашения
             // #1481) и сравнения; форматируем только видимый текст заголовка/вкладки браузера.
             const firstColumnDisplay = firstColumnValue != null ? this.formatRecordTitleValue(firstColumnValue) : null;
-            const title = isCreate ? `Создание: ${ typeName }` : `Редактирование: ${ firstColumnDisplay || typeName }`;
+            const title = isCreate ? `Создание: ${ typeName }` : `Редактирование: ${ this.escapeHtml(firstColumnDisplay || rawTypeName) }`;
             const instanceName = this.options.instanceName;
 
             // Save and update navbar-workspace + document.title with object value
             const navbarWorkspace = document.querySelector('.navbar-workspace');
             const prevWorkspaceText = navbarWorkspace ? navbarWorkspace.textContent : null;
             const prevDocTitle = document.title;
-            const objectValue = firstColumnDisplay || typeName;
+            const objectValue = firstColumnDisplay || rawTypeName;
             const truncatedValue = objectValue && objectValue.length > 32 ? objectValue.slice(0, 32) + '...' : objectValue;
             if (navbarWorkspace) navbarWorkspace.textContent = truncatedValue;
             document.title = truncatedValue;
@@ -92,7 +93,7 @@
 
                 subordinateTables.forEach(req => {
                     const attrs = this.parseAttrs(req.attrs);
-                    const fieldName = attrs.alias || req.val;
+                    const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                     const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
                     tabsHtml += `<div class="edit-form-tab" data-tab="sub-${ req.id }" data-arr-id="${ req.arr_id }" data-req-id="${ req.id }">${ fieldName } (${ arrCount })</div>`;
                 });
@@ -341,7 +342,7 @@
             const mainFieldReadOnly = formIsReadOnly;
 
             // Main value field - render according to base type
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const mainValue = recordData && recordData.obj ? recordData.obj.val : '';
             // For GRANT/REPORT_COLUMN fields, use term from API response for dropdown pre-selection (issue #583)
             // Issue #3572: для подчинённой таблицы значение «Объекты» может прийти меткой
@@ -451,7 +452,7 @@
 
             sortedFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const storedValue = recordReqs[req.id] ? recordReqs[req.id].value : '';
                 const baseTypeId = recordReqs[req.id] ? recordReqs[req.id].base : req.type;
                 const baseFormat = this.normalizeFormat(baseTypeId);
@@ -1025,7 +1026,7 @@
                 modal.style.zIndex = baseZIndex + 1;
                 modal.dataset.modalDepth = modalDepth;
 
-                const typeName = this.getMetadataName(metadata);
+                const typeName = this.escapeHtml(this.getMetadataName(metadata));
                 const headerTitle = parentRecordValue ? `${ this.escapeHtml(parentRecordValue) } / ${ typeName }` : typeName;
 
                 modal.innerHTML = `
@@ -1196,7 +1197,7 @@
                     const sortPriority = sortInfo ? sortState.indexOf(sortInfo) + 1 : '';
                     const priorityBadge = sortState.length > 1 && sortPriority ? `<span class="subordinate-sort-priority">${ sortPriority }</span>` : '';
 
-                    html += `<th class="subordinate-sortable-header" data-col-index="${ colIdx }">${ col.name }${ sortIndicator }${ priorityBadge }</th>`;
+                    html += `<th class="subordinate-sortable-header" data-col-index="${ colIdx }">${ this.escapeHtml(col.name) }${ sortIndicator }${ priorityBadge }</th>`;
                 });
 
                 html += `</tr></thead><tbody>`;
@@ -1996,8 +1997,8 @@
                     case 'FILE':
                         // Check if value is already an HTML anchor tag (from object/ endpoint)
                         if (typeof value === 'string' && value.trim().startsWith('<a')) {
-                            // Value is already HTML link - add file-link class and return as-is
-                            return value.replace('<a', '<a class="file-link"');
+                            // Preserve the link after allow-list sanitization.
+                            return this.sanitizeCellHtml(value).replace(/^<a\b/i, '<a class="file-link"');
                         }
                         break;
                 }

@@ -22,7 +22,7 @@
             const cascadeOffset = (modalDepth - 1) * 6;
             modal.style.transform = `translate(calc(-50% + ${cascadeOffset}px), calc(-50% + ${cascadeOffset}px))`;
 
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const title = `Создание: ${ typeName }`;
 
             // Build form for regular fields only (no nested subordinate tables in create mode)
@@ -89,7 +89,7 @@
 
             regularFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const baseFormat = this.normalizeFormat(req.type);
                 const isRequired = attrs.required;
                 const isMulti = attrs.multi;
@@ -1604,7 +1604,7 @@
 
             modal._overlayElement = overlay;
 
-            const typeName = this.getMetadataName(metadata);
+            const typeName = this.escapeHtml(this.getMetadataName(metadata));
             const title = `Создание: ${typeName}`;
             const decodedInitialValue = this.decodeHtmlEntities(initialValue);
 
@@ -1658,7 +1658,7 @@
 
             regularFields.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
-                const fieldName = attrs.alias || req.val;
+                const fieldName = this.escapeHtml(attrs.alias || req.val || '');
                 const isRequired = attrs.required;
 
                 attributesHtml += `<div class="form-group">`;

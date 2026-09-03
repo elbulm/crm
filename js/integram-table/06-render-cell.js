@@ -75,7 +75,10 @@
                 if (styleColIndex !== -1 && this.data[rowIndex]) {
                     const styleValue = this.data[rowIndex][styleColIndex];
                     if (styleValue) {
-                        customStyle = ` style="${ styleValue }"`;
+                        const safeStyle = this.sanitizeCellStyle(styleValue);
+                        if (safeStyle) {
+                            customStyle = ` style="${ this.escapeHtml(safeStyle) }"`;
+                        }
                     }
                 }
             }
@@ -157,46 +160,54 @@
                     if (value && value !== '') {
                         // Check if value is already an HTML anchor tag (from object/ endpoint)
                         if (typeof value === 'string' && value.trim().startsWith('<a')) {
-                            // Value is already HTML link - add file-link class and render as-is
-                            displayValue = value.replace('<a', '<a class="file-link"');
+                            // Preserve the server-provided link semantics after allow-list sanitization.
+                            const safeFileLink = this.sanitizeCellHtml(value);
+                            displayValue = safeFileLink.replace(/^<a\b/i, '<a class="file-link"');
                             return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
                         }
                         // Display as a download link if value is a path
                         const apiBase = this.getApiBase();
                         const fileName = value.split('/').pop() || value;
-                        displayValue = `<a href="${ apiBase }/file/${ value }" target="_blank" class="file-link" title="Скачать файл">${ this.escapeHtml(fileName) }</a>`;
+                        const encodedPath = String(value).split('/').map(segment => encodeURIComponent(segment)).join('/');
+                        const safeHref = this.escapeHtml(apiBase + '/file/' + encodedPath);
+                        displayValue = `<a href="${ safeHref }" target="_blank" rel="noopener noreferrer" class="file-link" title="Скачать файл">${ this.escapeHtml(fileName) }</a>`;
                         return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
                     }
                     break;
                 case 'HTML':
-                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
+                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }>${ this.sanitizeCellHtml(displayValue) }</td>`;
                 case 'BUTTON': {
                     const pathParts = window.location.pathname.split('/');
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
-                    let recordId = null;
-                    if (this.rawObjectData && this.rawObjectData[rowIndex]) {
-                        recordId = this.rawObjectData[rowIndex].i;
-                    }
-                    const btnValue = value !== null && value !== undefined ? String(value) : '';
-                    let btnHref, btnTarget, btnOnclick;
-                    if (btnValue.match(/^https?:\/\//i)) {
-                        btnHref = btnValue;
-                        btnTarget = recordId !== null ? String(recordId) : '_blank';
-                    } else if (btnValue.match(/^\w[\w.]*\s*\([\s\S]*\)\s*;?\s*$/)) {
-                        // Value is a JS function call (e.g. newApi('POST','...','','reloadAllIntegramTables'))
-                        btnOnclick = btnValue.replace(/;?\s*$/, '') + '; event.stopPropagation();';
+                    const btnValue = value !== null && value !== undefined ? String(value).trim() : '';
+                    const parsedAction = this.parseButtonAction(btnValue);
+                    let buttonHtml = '';
+
+                    if (parsedAction) {
+                        const actionAttr = this.escapeHtml(btnValue);
+                        buttonHtml = `<button type="button" class="btn btn-sm btn-primary integram-action-button" data-button-action="${ actionAttr }" title="Выполнить действие"><i class="pi pi-play"></i></button>`;
                     } else if (btnValue) {
-                        btnHref = `/${dbName}/${btnValue.replace(/^\//, '')}`;
-                        btnTarget = '_blank';
+                        const candidate = /^https?:\/\//i.test(btnValue)
+                            ? btnValue
+                            : '/' + encodeURIComponent(dbName) + '/' + btnValue.replace(/^\/+/, '');
+                        try {
+                            const url = new URL(candidate, window.location.origin);
+                            if (url.protocol === 'http:' || url.protocol === 'https:') {
+                                const href = url.origin === window.location.origin
+                                    ? url.pathname + url.search + url.hash
+                                    : url.href;
+                                const safeHref = this.escapeHtml(href);
+                                buttonHtml = `<a href="${ safeHref }" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary" title="Открыть"><i class="pi pi-play"></i></a>`;
+                            }
+                        } catch (error) {
+                            console.warn('[integram-table] Invalid BUTTON URL blocked', error);
+                        }
                     }
-                    if (btnOnclick) {
-                        displayValue = `<button class="btn btn-sm btn-primary" onclick="${ btnOnclick.replace(/"/g, '&quot;') }"><i class="pi pi-play"></i></button>`;
-                    } else if (btnHref) {
-                        displayValue = `<a href="${ btnHref }" target="${ btnTarget }" onclick="event.stopPropagation();"><button class="btn btn-sm btn-primary"><i class="pi pi-play"></i></button></a>`;
-                    } else {
-                        displayValue = `<button class="btn btn-sm btn-primary"><i class="pi pi-play"></i></button>`;
+
+                    if (!buttonHtml) {
+                        buttonHtml = '<button type="button" class="btn btn-sm btn-primary" disabled title="Небезопасное действие заблокировано"><i class="pi pi-play"></i></button>';
                     }
-                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle } style="text-align: center;">${ displayValue }</td>`;
+                    return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle } style="text-align: center;">${ buttonHtml }</td>`;
                 }
             }
 
@@ -782,7 +793,7 @@
                         })() : '';
                         rows[depth].push(`
                             <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
-                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ displayName }</span>
+                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
                                 <div class="column-resize-handle" data-column-id="${ col.id }"></div>
@@ -792,7 +803,7 @@
                         // Display prefix with dots replaced by spaces (issue #1565)
                         const displayPrefix = node.prefix.replace(/\./g, ' ');
                         rows[depth].push(`
-                            <th class="smart-header-group" colspan="${ node.span }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ displayPrefix }</th>
+                            <th class="smart-header-group" colspan="${ node.span }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ this.escapeHtml(displayPrefix) }</th>
                         `);
                         visit(node.children, depth + 1);
                     }
@@ -847,7 +858,7 @@
 
                 return `
                     <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle } class="${ groupingClass }">
-                        <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ col.name }</span>
+                        <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                         ${ refIconHtml }
                         ${ addButtonHtml }
                         <div class="column-resize-handle" data-column-id="${ col.id }"></div>

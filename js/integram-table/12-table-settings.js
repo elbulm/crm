@@ -270,16 +270,19 @@
                 recordId = this.rawObjectData[rowIndex].i;
             }
 
-            if (!recordId) {
+            if (!recordId || !/^\d+$/.test(String(recordId))) {
                 return `<td class="references-column-cell"></td>`;
             }
 
             const pathParts = window.location.pathname.split('/');
-            const dbName = pathParts.length >= 2 ? pathParts[1] : '';
+            const dbName = pathParts.length >= 2 ? encodeURIComponent(pathParts[1]) : '';
 
             const links = backRefs.map(ref => {
-                const href = `/${dbName}/table/${ref.tableId}?FR_${ref.fieldId}=@${recordId}`;
-                const label = `${ref.tableName}.${ref.fieldName}`;
+                const tableId = String(ref.tableId || '');
+                const fieldId = String(ref.fieldId || '');
+                if (!/^\d+$/.test(tableId) || !/^\d+$/.test(fieldId)) return '';
+                const href = `/${dbName}/table/${tableId}?FR_${fieldId}=@${recordId}`;
+                const label = this.escapeHtml(`${ref.tableName}.${ref.fieldName}`);
                 return `<a href="${href}" class="reference-link" style="color: #9ca3af;" title="${label}">${label}</a>`;
             }).join(', ');
 

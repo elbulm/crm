@@ -591,6 +591,8 @@
 
             const instanceName = this.options.instanceName;
             const badges = hiddenFilters.map(hf => {
+                const colId = String(hf.colId || '');
+                if (!/^\d+$/.test(colId)) return '';
                 const filterTypeSymbol = hf.filter.type || '^';
                 // Use resolved text label for @id-based filters when available (issue #551)
                 const activeFilter = this.filters[hf.colId];
@@ -600,10 +602,10 @@
                 const displayValue = resolvedLabel ? `${filterTypeSymbol} ${resolvedLabel}` : filterTypeSymbol;
 
                 return `
-                    <span class="hidden-filter-badge" data-col-id="${hf.colId}">
-                        <span class="hidden-filter-badge-name">${hf.colName}</span>
-                        <span class="hidden-filter-badge-value">${displayValue}</span>
-                        <span class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${hf.colId}')" title="Удалить фильтр"><i class="pi pi-times"></i></span>
+                    <span class="hidden-filter-badge" data-col-id="${colId}">
+                        <span class="hidden-filter-badge-name">${this.escapeHtml(hf.colName)}</span>
+                        <span class="hidden-filter-badge-value">${this.escapeHtml(displayValue)}</span>
+                        <span class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${colId}')" title="Удалить фильтр"><i class="pi pi-times"></i></span>
                     </span>
                 `;
             }).join('');
