@@ -2300,23 +2300,24 @@ class IntegramTable{
                                     : headerColumns.map(col => {
                                         const width = this.columnWidths[col.id];
                                         const widthStyle = width ? ` style="width: ${ width }px; min-width: ${ width }px;"` : '';
-                                        const addButtonHtml = this.shouldShowAddButton(col) ?
-                                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ col.id }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
+                                        const actionColumnId = this.normalizeNumericId(col.id);
+                                        const addButtonHtml = this.shouldShowAddButton(col) && actionColumnId ?
+                                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ actionColumnId }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
                                         let sortIndicator = '';
                                         if (this.sortColumn === col.id) {
                                             sortIndicator = this.sortDirection === 'asc' ? '<i class="pi pi-sort-amount-up-alt" style="font-size:0.75em;"></i> ' : '<i class="pi pi-sort-amount-down" style="font-size:0.75em;"></i> ';
                                         }
-                                        const refTypeId = col.ref;
+                                        const refTypeId = this.normalizeNumericId(col.ref);
                                         const refIconHtml = refTypeId ? (() => {
                                             const dbName = window.db || window.location.pathname.split('/')[1];
                                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                                         })() : '';
                                         return `
-                                            <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }>
-                                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ this.escapeHtml(col.name) }</span>
+                                            <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }>
+                                                <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                                                 ${ refIconHtml }
                                                 ${ addButtonHtml }
-                                                <div class="column-resize-handle" data-column-id="${ col.id }"></div>
+                                                <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
                                             </th>
                                         `;
                                     }).join('');
@@ -2810,6 +2811,9 @@ class IntegramTable{
                 }
             }
 
+            if (refValueId && !isArrayField) {
+                refValueId = this.normalizeNumericId(refValueId) || null;
+            }
             // Check if this column has a style column
             if (this.styleColumns[column.id]) {
                 const styleColId = this.styleColumns[column.id];
@@ -2831,26 +2835,27 @@ class IntegramTable{
             }
 
             // Handle table requisites (subordinate tables) - display as link with table icon
-            if (column.arr_id) {
+            const subordinateTypeId = this.normalizeNumericId(column.arr_id);
+            if (subordinateTypeId) {
                 cellClass = 'subordinate-link-cell';
-                const count = value !== null && value !== undefined && value !== '' ? value : 0;
+                const count = this.escapeHtml(value !== null && value !== undefined && value !== '' ? value : 0);
                 const instanceName = this.options.instanceName;
                 // Get the record ID from rawObjectData for this row
                 let recordId = null;
                 if (this.rawObjectData && this.rawObjectData[rowIndex]) {
-                    recordId = this.rawObjectData[rowIndex].i;
+                    recordId = this.normalizeNumericId(this.rawObjectData[rowIndex].i);
                 }
                 if (recordId) {
                     // Build URL for "Open in new window" link (issue #729, #733)
                     const pathParts = window.location.pathname.split('/');
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
-                    const subordinateTableUrl = `/${dbName}/table/${column.arr_id}?F_U=${recordId}`;
+                    const subordinateTableUrl = `/${dbName}/table/${subordinateTypeId}?F_U=${recordId}`;
                     // Issue #733: Split into two links - table icon opens new window, count opens modal
-                    displayValue = `<a href="${subordinateTableUrl}" class="subordinate-table-icon-link" target="${column.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${ instanceName }.openSubordinateTableFromCell(event, ${ column.arr_id }, ${ recordId }); return false;" title="Посмотреть подчиненную таблицу">(${ count })</a>`;
+                    displayValue = `<a href="${subordinateTableUrl}" class="subordinate-table-icon-link" target="${subordinateTypeId}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${ instanceName }.openSubordinateTableFromCell(event, ${ subordinateTypeId }, ${ recordId }); return false;" title="Посмотреть подчиненную таблицу">(${ count })</a>`;
                 } else {
                     displayValue = `<span class="table-icon"><i class="pi pi-table"></i></span><span class="subordinate-count">(${ count })</span>`;
                 }
-                return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }" data-arr-id="${ column.arr_id }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
+                return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }" data-arr-id="${ subordinateTypeId }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
             }
 
             switch (format) {
@@ -3073,6 +3078,8 @@ class IntegramTable{
                     typeId = fallbackTypeId;
                 }
 
+                recordId = this.normalizeNumericId(recordId);
+                typeId = this.normalizeNumericId(typeId);
                 const instanceName = this.options.instanceName;
                 // Only show edit icon if recordId exists (disable creating new records)
                 // In object format: show edit icon ONLY for first column or reference fields
@@ -3145,7 +3152,7 @@ class IntegramTable{
                     // Issue #1794: For "any record" link type, also wrap in lazy-resolved hyperlink
                     let displayContent = escapedValue;
                     if (isRefField && refValueId && !isArrayField) {
-                        const refTypeId = column.orig || column.ref_id || typeId;
+                        const refTypeId = this.normalizeNumericId(column.orig || column.ref_id || typeId);
                         if (refTypeId) {
                             const pathParts = window.location.pathname.split('/');
                             const dbName = pathParts.length >= 2 ? pathParts[1] : '';
@@ -3168,7 +3175,7 @@ class IntegramTable{
             // Issue #1404: For reference fields without edit icon, still wrap value in a hyperlink
             // inside a cell-content-wrapper when the referenced record ID is available
             if (isRefField && refValueId && !isArrayField && !escapedValue.includes('cell-content-wrapper')) {
-                const refTypeId = column.orig || column.ref_id;
+                const refTypeId = this.normalizeNumericId(column.orig || column.ref_id);
                 if (refTypeId) {
                     const pathParts = window.location.pathname.split('/');
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
@@ -3242,6 +3249,10 @@ class IntegramTable{
                     }
                 }
 
+                if (recordId !== 'new') {
+                    recordId = this.normalizeNumericId(recordId);
+                }
+
                 // For reference fields, we allow editing even with empty values as long as we can determine parent record
                 // For non-reference fields, we still require a valid recordId
                 // In object format, check for ref_id existence; in report format, check ref === 1
@@ -3257,11 +3268,11 @@ class IntegramTable{
                     // Add ref attribute if this is a reference field
                     const refAttr = isRefField ? ` data-col-ref="1"` : '';
                     // Store parsed reference value ID from "id:Value" format
-                    const refValueIdAttr = refValueId ? ` data-ref-value-id="${ refValueId }"` : '';
+                    const refValueIdAttr = refValueId ? ` data-ref-value-id="${ this.escapeHtml(refValueId) }"` : '';
                     // Store full value for editing (escape for HTML attribute)
-                    const fullValueAttr = fullValueForEditing ? ` data-full-value="${ fullValueForEditing.replace(/"/g, '&quot;') }"` : '';
+                    const fullValueAttr = fullValueForEditing ? ` data-full-value="${ this.escapeHtml(fullValueForEditing) }"` : '';
                     // Issue #863: For multi-select fields, store raw "ids:values" string so editor can resolve IDs directly
-                    const rawValueAttr = multiRawValue ? ` data-raw-value="${ multiRawValue.replace(/"/g, '&quot;') }"` : '';
+                    const rawValueAttr = multiRawValue ? ` data-raw-value="${ this.escapeHtml(multiRawValue) }"` : '';
                     // Use 'dynamic' as placeholder for recordId if it's empty (will be determined at edit time)
                     const recordIdAttr = recordId && recordId !== '' && recordId !== '0' ? recordId : 'dynamic';
                     // Use paramId for object format (metadata ID), otherwise fall back to type (data type)
@@ -3269,7 +3280,7 @@ class IntegramTable{
                     // Issue #915: Store typeId for edit icon so updateCellDisplay can add it
                     // when an empty cell gets its first value filled in
                     const editTypeIdAttr = editIconTypeId ? ` data-edit-type-id="${ editIconTypeId }"` : '';
-                    editableAttrs = ` data-editable="true" data-record-id="${ recordIdAttr }" data-col-id="${ column.id }" data-col-type="${ colTypeForParam }" data-col-format="${ format }" data-row-index="${ rowIndex }"${ refAttr }${ refValueIdAttr }${ fullValueAttr }${ rawValueAttr }${ editTypeIdAttr }`;
+                    editableAttrs = ` data-editable="true" data-record-id="${ this.escapeHtml(recordIdAttr) }" data-col-id="${ this.escapeHtml(column.id) }" data-col-type="${ this.escapeHtml(colTypeForParam) }" data-col-format="${ format }" data-row-index="${ rowIndex }"${ refAttr }${ refValueIdAttr }${ fullValueAttr }${ rawValueAttr }${ editTypeIdAttr }`;
                     cellClass += ' inline-editable';
                     if (window.INTEGRAM_DEBUG) {
                         console.log(`  ✓ Cell will be editable with recordId=${recordIdAttr}`);
@@ -3289,7 +3300,7 @@ class IntegramTable{
 
             // Issue #4385: mirror the record/reference ID onto the parent <td> title so the
             // ID stays discoverable even when the .edit-icon covers the inner wrapper entirely.
-            const cellTitleAttr = cellTitleId ? ` title="${ cellTitleId }"` : '';
+            const cellTitleAttr = cellTitleId ? ` title="${ this.escapeHtml(cellTitleId) }"` : '';
             return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }${ editableAttrs }${ cellTitleAttr }>${ escapedValue }${ rowNumberHtml }</td>`;
         }
 
@@ -3513,8 +3524,9 @@ class IntegramTable{
                         const rowspan = totalDepth - depth;
                         const width = this.columnWidths[col.id];
                         const widthStyle = width ? ` style="width: ${ width }px; min-width: ${ width }px;"` : '';
-                        const addButtonHtml = this.shouldShowAddButton(col) ?
-                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ col.id }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
+                        const actionColumnId = this.normalizeNumericId(col.id);
+                        const addButtonHtml = this.shouldShowAddButton(col) && actionColumnId ?
+                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ actionColumnId }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
                         let sortIndicator = '';
                         if (this.sortColumn === col.id) {
                             sortIndicator = this.sortDirection === 'asc'
@@ -3528,17 +3540,17 @@ class IntegramTable{
                         const groupingClass = isGroupingCol ? ' group-header' : '';
                         const groupingOrder = isGroupingCol ? this.groupingColumns.indexOf(col.id) + 1 : '';
                         const groupingBadge = isGroupingCol ? `<span class="grouping-header-badge">${ groupingOrder }</span>` : '';
-                        const refTypeId = col.ref_id;
+                        const refTypeId = this.normalizeNumericId(col.ref_id);
                         const refIconHtml = refTypeId ? (() => {
                             const dbName = window.db || window.location.pathname.split('/')[1];
                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                         })() : '';
                         rows[depth].push(`
-                            <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
-                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
+                            <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
+                                <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
-                                <div class="column-resize-handle" data-column-id="${ col.id }"></div>
+                                <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
                             </th>
                         `);
                     } else {
@@ -3577,8 +3589,9 @@ class IntegramTable{
             return allCols.map(col => {
                 const width = this.columnWidths[col.id];
                 const widthStyle = width ? ` style="width: ${ width }px; min-width: ${ width }px;"` : '';
-                const addButtonHtml = this.shouldShowAddButton(col) ?
-                    `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ col.id }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
+                const actionColumnId = this.normalizeNumericId(col.id);
+                const addButtonHtml = this.shouldShowAddButton(col) && actionColumnId ?
+                    `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ actionColumnId }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
 
                 // Add sort indicator if this column is sorted
                 let sortIndicator = '';
@@ -3592,18 +3605,18 @@ class IntegramTable{
                 const groupingOrder = isGroupingCol ? this.groupingColumns.indexOf(col.id) + 1 : '';
                 const groupingBadge = isGroupingCol ? `<span class="grouping-header-badge">${ groupingOrder }</span>` : '';
 
-                const refTypeId = col.ref_id;
+                const refTypeId = this.normalizeNumericId(col.ref_id);
                 const refIconHtml = refTypeId ? (() => {
                     const dbName = window.db || window.location.pathname.split('/')[1];
                     return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                 })() : '';
 
                 return `
-                    <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle } class="${ groupingClass }">
-                        <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
+                    <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle } class="${ groupingClass }">
+                        <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                         ${ refIconHtml }
                         ${ addButtonHtml }
-                        <div class="column-resize-handle" data-column-id="${ col.id }"></div>
+                        <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
                     </th>
                 `;
             }).join('');
@@ -7170,8 +7183,8 @@ class IntegramTable{
 
             // Issue #1404: For reference fields, wrap the value in a hyperlink inside cell-content-wrapper
             const cellIsRef = cell.dataset.ref === '1';
-            const cellRefValueId = cell.dataset.refValueId;
-            const cellEditTypeId = cell.dataset.editTypeId;
+            const cellRefValueId = this.normalizeNumericId(cell.dataset.refValueId);
+            const cellEditTypeId = this.normalizeNumericId(cell.dataset.editTypeId);
             if (cellIsRef && cellRefValueId && cellEditTypeId && !cell.dataset.array) {
                 const pathParts = window.location.pathname.split('/');
                 const dbName = pathParts.length >= 2 ? pathParts[1] : '';
@@ -7190,14 +7203,14 @@ class IntegramTable{
             } else {
                 // Issue #915: If the cell was empty (no edit icon) and now has a value,
                 // add the edit icon using the stored data-edit-type-id attribute
-                const editTypeId = cell.dataset.editTypeId;
+                const editTypeId = this.normalizeNumericId(cell.dataset.editTypeId);
                 // Issue #921: For reference fields, use data-ref-value-id as the record ID
                 // (the reference's own ID, e.g. role ID 520), not data-record-id (the parent
                 // row's ID, e.g. user ID 557). data-ref-value-id is updated by saveReferenceEdit.
-                const editRecordId = cell.dataset.refValueId || cell.dataset.recordId;
-                const editRowIndex = cell.dataset.rowIndex;
+                const editRecordId = this.normalizeNumericId(cell.dataset.refValueId || cell.dataset.recordId);
+                const editRowIndex = parseInt(cell.dataset.rowIndex, 10);
                 const hasNewValue = newValue !== null && newValue !== undefined && newValue !== '';
-                if (hasNewValue && editTypeId && editRecordId && editRecordId !== '' && editRecordId !== '0' && editRecordId !== 'dynamic') {
+                if (hasNewValue && editTypeId && editRecordId && Number.isInteger(editRowIndex) && editRowIndex >= 0) {
                     const instanceName = this.options.instanceName;
                     // Issue #1810: any-ref cell — resolve real table via get_record before opening form
                     const isAnyRefCell = cell.dataset.anyRef === '1';
@@ -12560,6 +12573,7 @@ class IntegramTable{
             // #1481) и сравнения; форматируем только видимый текст заголовка/вкладки браузера.
             const firstColumnDisplay = firstColumnValue != null ? this.formatRecordTitleValue(firstColumnValue) : null;
             const title = isCreate ? `Создание: ${ typeName }` : `Редактирование: ${ this.escapeHtml(firstColumnDisplay || rawTypeName) }`;
+            const safeTypeId = this.normalizeNumericId(typeId);
             const instanceName = this.options.instanceName;
 
             // Save and update navbar-workspace + document.title with object value
@@ -12570,19 +12584,20 @@ class IntegramTable{
             const truncatedValue = objectValue && objectValue.length > 32 ? objectValue.slice(0, 32) + '...' : objectValue;
             if (navbarWorkspace) navbarWorkspace.textContent = truncatedValue;
             document.title = truncatedValue;
-            const recordId = recordData && recordData.obj ? recordData.obj.id : null;
+            const recordId = this.normalizeNumericId(recordData && recordData.obj ? recordData.obj.id : null);
             // Issue #616: For create mode, use F_U from URL as parent when F_U > 1
-            const defaultParentId = (this.options.parentId && parseInt(this.options.parentId) > 1) ? this.options.parentId : 1;
-            const parentId = recordData && recordData.obj && recordData.obj.parent ? recordData.obj.parent : defaultParentId;
+            const configuredParentId = this.normalizeNumericId(this.options.parentId);
+            const defaultParentId = configuredParentId && Number(configuredParentId) > 1 ? configuredParentId : '1';
+            const parentId = this.normalizeNumericId(recordData && recordData.obj && recordData.obj.parent ? recordData.obj.parent : defaultParentId) || defaultParentId;
 
             // Build record ID and table link HTML for edit mode (issue #563)
             let recordIdHtml = '';
-            if (!isCreate && recordId) {
+            if (!isCreate && recordId && safeTypeId) {
                 // Extract database name from URL path
                 const pathParts = window.location.pathname.split('/');
                 const dbName = pathParts.length >= 2 ? pathParts[1] : '';
                 // Build table URL with filters: /{dbName}/table/{typeId}?F_U={parentId}&F_I={recordId}
-                const tableUrl = `/${dbName}/table/${typeId}?F_U=${parentId || 1}&F_I=${recordId}`;
+                const tableUrl = `/${dbName}/table/${safeTypeId}?F_U=${parentId}&F_I=${recordId}`;
 
                 recordIdHtml = `
                     <span class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID">#${recordId}</span>
@@ -12604,7 +12619,7 @@ class IntegramTable{
             });
 
             const regularFields = sortedReqs.filter(req => !req.arr_id);
-            const subordinateTables = sortedReqs.filter(req => req.arr_id);
+            const subordinateTables = sortedReqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
 
             // Build tabs HTML
             let tabsHtml = '';
@@ -12617,8 +12632,10 @@ class IntegramTable{
                 subordinateTables.forEach(req => {
                     const attrs = this.parseAttrs(req.attrs);
                     const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-                    const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
-                    tabsHtml += `<div class="edit-form-tab" data-tab="sub-${ req.id }" data-arr-id="${ req.arr_id }" data-req-id="${ req.id }">${ fieldName } (${ arrCount })</div>`;
+                    const arrCount = this.escapeHtml(recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0);
+                    const reqId = this.normalizeNumericId(req.id);
+                    const arrId = this.normalizeNumericId(req.arr_id);
+                    tabsHtml += `<div class="edit-form-tab" data-tab="sub-${ reqId }" data-arr-id="${ arrId }" data-req-id="${ reqId }">${ fieldName } (${ arrCount })</div>`;
                 });
 
                 tabsHtml += `</div>`;
@@ -12660,7 +12677,7 @@ class IntegramTable{
             if (hasSubordinateTables) {
                 subordinateTables.forEach(req => {
                     formHtml += `
-                        <div class="edit-form-tab-content" data-tab-content="sub-${ req.id }">
+                        <div class="edit-form-tab-content" data-tab-content="sub-${ this.normalizeNumericId(req.id) }">
                             <div class="subordinate-table-loading">Загрузка...</div>
                         </div>
                     `;
@@ -13209,10 +13226,10 @@ class IntegramTable{
 
                     // Load subordinate table if needed
                     // Use modal.dataset.recordId to support nested modals (issue #741)
-                    const parentRecordId = modal.dataset.recordId;
+                    const parentRecordId = this.normalizeNumericId(modal.dataset.recordId);
                     if (tabId.startsWith('sub-') && tab.dataset.arrId && parentRecordId) {
-                        const arrId = tab.dataset.arrId;
-                        const reqId = tab.dataset.reqId;
+                        const arrId = this.normalizeNumericId(tab.dataset.arrId);
+                        const reqId = this.normalizeNumericId(tab.dataset.reqId);
 
                         // Check if already loaded
                         if (!targetContent.dataset.loaded) {
@@ -13239,6 +13256,12 @@ class IntegramTable{
         }
 
         async loadSubordinateTable(container, arrId, parentRecordId, reqId) {
+            arrId = this.normalizeNumericId(arrId);
+            parentRecordId = this.normalizeNumericId(parentRecordId);
+            if (!arrId || !parentRecordId) {
+                container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+                return;
+            }
             const hasContent = !!container.querySelector('.subordinate-table');
             if (hasContent) {
                 // Keep existing content visible but dimmed, show spinner overlay (issue #2580)
@@ -13285,7 +13308,7 @@ class IntegramTable{
 
             } catch (error) {
                 console.error('Error loading subordinate table:', error);
-                container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${ error.message }</div>`;
+                container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${ this.escapeHtml(error.message) }</div>`;
             }
         }
 
@@ -13398,7 +13421,7 @@ class IntegramTable{
 
                     pageRows.forEach((row, rowOffset) => {
                         const rowIndex = startRowIndex + rowOffset;
-                        const rowId = row.i;
+                        const rowId = this.normalizeNumericId(row.i);
                         const values = row.r || [];
                         const tr = document.createElement('tr');
                         tr.dataset.rowId = rowId;
@@ -13419,7 +13442,7 @@ class IntegramTable{
                             displayMainValue = this.highlightSearchTerm(displayMainValue, searchTerm);
                         }
                         const mainTd = document.createElement('td');
-                        mainTd.className = 'subordinate-cell-clickable';
+                        mainTd.className = rowId ? 'subordinate-cell-clickable' : '';
                         mainTd.dataset.rowId = rowId;
                         mainTd.dataset.typeId = arrId;
                         mainTd.innerHTML = displayMainValue;
@@ -13433,10 +13456,11 @@ class IntegramTable{
                             const cellValue = values[idx + 1] !== undefined ? values[idx + 1] : '';
                             const td = document.createElement('td');
                             if (req.arr_id) {
-                                const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
-                                const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
+                                const count = this.escapeHtml(typeof cellValue === 'number' ? cellValue : (cellValue || 0));
+                                const nestedTypeId = this.normalizeNumericId(req.arr_id);
+                                const nestedTableUrl = nestedTypeId && rowId ? `/${dbName}/table/${nestedTypeId}?F_U=${rowId}` : '';
                                 td.className = 'subordinate-nested-count';
-                                td.innerHTML = `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>`;
+                                td.innerHTML = nestedTableUrl ? `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${nestedTypeId}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${nestedTypeId}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>` : `<span class="subordinate-count">(${count})</span>`;
                             } else {
                                 let displayValue = this.formatSubordinateCellValue(cellValue, req);
                                 if (searchTerm) {
@@ -13484,8 +13508,15 @@ class IntegramTable{
          * @param {number} parentRecordId - Parent record ID
          */
         async openSubordinateTableFromCell(event, arrId, parentRecordId) {
+            arrId = this.normalizeNumericId(arrId);
+            parentRecordId = this.normalizeNumericId(parentRecordId);
             event.preventDefault();
             event.stopPropagation();
+
+            if (!arrId || !parentRecordId) {
+                this.showToast('Некорректный идентификатор таблицы', 'error');
+                return;
+            }
 
             // Remember the clicked cell so we can update its count on close (issue #1839)
             const clickedCountCell = event.target.closest('td');
@@ -13611,6 +13642,12 @@ class IntegramTable{
         }
 
         renderSubordinateTable(container, metadata, data, arrId, parentRecordId, sortState = null, searchTerm = '') {
+            arrId = this.normalizeNumericId(arrId);
+            parentRecordId = this.normalizeNumericId(parentRecordId);
+            if (!arrId || !parentRecordId) {
+                container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+                return;
+            }
             const instanceName = this.options.instanceName;
             let rows = Array.isArray(data) ? [...data] : [];
             const reqs = metadata.reqs || [];
@@ -13704,7 +13741,7 @@ class IntegramTable{
 
                 // Data rows
                 rows.forEach((row, rowIndex) => {
-                    const rowId = row.i;
+                    const rowId = this.normalizeNumericId(row.i);
                     const values = row.r || [];
 
                     html += `<tr data-row-id="${ rowId }" draggable="false">`;
@@ -13719,17 +13756,18 @@ class IntegramTable{
                     if (searchTerm) {
                         displayMainValue = this.highlightSearchTerm(displayMainValue, searchTerm);
                     }
-                    html += `<td class="subordinate-cell-clickable" data-row-id="${ rowId }" data-type-id="${ arrId }">${ displayMainValue }</td>`;
+                    html += `<td${ rowId ? ' class="subordinate-cell-clickable"' : '' } data-row-id="${ rowId }" data-type-id="${ arrId }">${ displayMainValue }</td>`;
 
                     // Other columns
                     reqs.forEach((req, idx) => {
                         const cellValue = values[idx + 1] !== undefined ? values[idx + 1] : '';
 
                         if (req.arr_id) {
-                            const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
+                            const count = this.escapeHtml(typeof cellValue === 'number' ? cellValue : (cellValue || 0));
+                            const nestedTypeId = this.normalizeNumericId(req.arr_id);
                             // Issue #737: Use the same icon styling as .subordinate-link-cell in main table
-                            const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
-                            html += `<td class="subordinate-nested-count"><a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a></td>`;
+                            const nestedTableUrl = nestedTypeId && rowId ? `/${dbName}/table/${nestedTypeId}?F_U=${rowId}` : '';
+                            html += `<td class="subordinate-nested-count">${ nestedTableUrl ? `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${nestedTypeId}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${nestedTypeId}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>` : `<span class="subordinate-count">(${count})</span>` }</td>`;
                         } else {
                             let displayValue = this.formatSubordinateCellValue(cellValue, req);
                             if (searchTerm) {
@@ -17622,6 +17660,10 @@ class IntegramTable{
             return result.path || result.file || result.filename;
         }
 
+        normalizeNumericId(value) {
+            const id = value === null || value === undefined ? '' : String(value).trim();
+            return /^\d+$/.test(id) ? id : '';
+        }
         sanitizeLinkUrl(value) {
             if (value === null || value === undefined) return '';
             const url = String(value).trim();
@@ -19657,6 +19699,8 @@ if (typeof window !== 'undefined') {
  * openCreateRecordForm(3596, 1, {'t3888': 357, 't3886': 'Отказались'});
  */
 async function openCreateRecordForm(tableTypeId, parentId, fieldValues = {}) {
+    tableTypeId = /^\d+$/.test(String(tableTypeId ?? '').trim()) ? String(tableTypeId).trim() : '';
+    parentId = /^\d+$/.test(String(parentId ?? '').trim()) ? String(parentId).trim() : '';
     if (!tableTypeId) {
         console.error('openCreateRecordForm: tableTypeId is required');
         return;
@@ -19810,6 +19854,10 @@ class IntegramCreateFormHelper {
         return parsed;
     }
 
+    normalizeNumericId(value) {
+        const id = value === null || value === undefined ? '' : String(value).trim();
+        return /^\d+$/.test(id) ? id : '';
+    }
     sanitizeLinkUrl(value) {
         if (value === null || value === undefined) return '';
         const url = String(value).trim();
@@ -21054,6 +21102,12 @@ class IntegramCreateFormHelper {
      * Enhanced with subordinate table tabs and form settings button (issue #837).
      */
     renderEditFormModalStandalone(metadata, recordData, typeId, recordId) {
+        typeId = this.normalizeNumericId(typeId);
+        recordId = this.normalizeNumericId(recordId);
+        if (!typeId || !recordId) {
+            this.showToast('Некорректный идентификатор записи', 'error');
+            return;
+        }
         // Track modal depth for z-index stacking
         if (!window._integramModalDepth) {
             window._integramModalDepth = 0;
@@ -21084,7 +21138,7 @@ class IntegramCreateFormHelper {
         const recordVal = recordData && recordData.obj ? recordData.obj.val : '';
         // #3774: DATETIME-главное-значение → дата-время вместо unix-штампа.
         const title = `Редактирование: ${this.escapeHtml(this.formatRecordTitleValue(recordVal)) || typeName}`;
-        const parentId = recordData && recordData.obj ? recordData.obj.parent : 1;
+        const parentId = this.normalizeNumericId(recordData && recordData.obj ? recordData.obj.parent : 1) || '1';
 
         // Build record ID link HTML
         const pathParts = window.location.pathname.split('/');
@@ -21104,7 +21158,7 @@ class IntegramCreateFormHelper {
         const regularFields = reqs.filter(req => !req.arr_id);
 
         // Separate subordinate tables (issue #837)
-        const subordinateTables = reqs.filter(req => req.arr_id);
+        const subordinateTables = reqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
         const hasSubordinateTables = subordinateTables.length > 0 && recordId;
 
         // Build tabs HTML (issue #837)
@@ -21116,8 +21170,10 @@ class IntegramCreateFormHelper {
             subordinateTables.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
                 const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-                const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
-                tabsHtml += `<div class="edit-form-tab" data-tab="sub-${req.id}" data-arr-id="${req.arr_id}" data-req-id="${req.id}">${fieldName} (${arrCount})</div>`;
+                const arrCount = this.escapeHtml(recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0);
+                const reqId = this.normalizeNumericId(req.id);
+                const arrId = this.normalizeNumericId(req.arr_id);
+                tabsHtml += `<div class="edit-form-tab" data-tab="sub-${reqId}" data-arr-id="${arrId}" data-req-id="${reqId}">${fieldName} (${arrCount})</div>`;
             });
 
             tabsHtml += `</div>`;
@@ -21147,7 +21203,7 @@ class IntegramCreateFormHelper {
         if (hasSubordinateTables) {
             subordinateTables.forEach(req => {
                 formHtml += `
-                    <div class="edit-form-tab-content" data-tab-content="sub-${req.id}">
+                    <div class="edit-form-tab-content" data-tab-content="sub-${this.normalizeNumericId(req.id)}">
                         <div class="subordinate-table-loading">Загрузка...</div>
                     </div>
                 `;
@@ -21264,10 +21320,10 @@ class IntegramCreateFormHelper {
                 }
 
                 // Load subordinate table if needed
-                const parentRecordId = modal.dataset.recordId;
+                const parentRecordId = self.normalizeNumericId(modal.dataset.recordId);
                 if (tabId.startsWith('sub-') && tab.dataset.arrId && parentRecordId) {
-                    const arrId = tab.dataset.arrId;
-                    const reqId = tab.dataset.reqId;
+                    const arrId = self.normalizeNumericId(tab.dataset.arrId);
+                    const reqId = self.normalizeNumericId(tab.dataset.reqId);
 
                     // Check if already loaded
                     if (!targetContent.dataset.loaded) {
@@ -21295,6 +21351,12 @@ class IntegramCreateFormHelper {
      * Load subordinate table content (issue #837).
      */
     async loadSubordinateTableStandalone(container, arrId, parentRecordId, reqId) {
+        arrId = this.normalizeNumericId(arrId);
+        parentRecordId = this.normalizeNumericId(parentRecordId);
+        if (!arrId || !parentRecordId) {
+            container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+            return;
+        }
         if (!container.querySelector('.subordinate-table')) {
             container.innerHTML = '<div class="subordinate-table-loading">Загрузка...</div>';
         }
@@ -21318,7 +21380,7 @@ class IntegramCreateFormHelper {
 
         } catch (error) {
             console.error('Error loading subordinate table:', error);
-            container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${error.message}</div>`;
+            container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${this.escapeHtml(error.message)}</div>`;
         }
     }
 
@@ -21372,6 +21434,12 @@ class IntegramCreateFormHelper {
      * Uses the same CSS classes as the main renderSubordinateTable method.
      */
     renderSubordinateTableStandalone(container, metadata, data, arrId, parentRecordId) {
+        arrId = this.normalizeNumericId(arrId);
+        parentRecordId = this.normalizeNumericId(parentRecordId);
+        if (!arrId || !parentRecordId) {
+            container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+            return;
+        }
         const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const records = Array.isArray(data) ? data : [];
         const reqs = metadata.reqs || [];
@@ -21417,13 +21485,13 @@ class IntegramCreateFormHelper {
 
             // Data rows
             records.forEach((record, rowIndex) => {
-                const recordId = record.i;
+                const recordId = this.normalizeNumericId(record.i);
                 const values = record.r || [];
                 html += `<tr data-row-id="${recordId}" style="cursor:pointer;">`;
 
                 // Main value column (clickable)
                 const mainValue = this.formatSubordinateCellDisplay(values[0] || '', metadata.type);
-                html += `<td class="subordinate-cell-clickable subordinate-cell-with-row-number" data-row="${rowIndex}" data-record-id="${recordId}" data-type-id="${arrId}">${mainValue}<span class="subordinate-row-number">${rowIndex + 1}</span></td>`;
+                html += `<td class="subordinate-cell-with-row-number${recordId ? ' subordinate-cell-clickable' : ''}" data-row="${rowIndex}" data-record-id="${recordId}" data-type-id="${arrId}">${mainValue}<span class="subordinate-row-number">${rowIndex + 1}</span></td>`;
 
                 // Requisite columns. Вложенные (arr_id) колонки не рисуются, но слот в r[]
                 // занимают — valIdx двигается на каждом реквизите, иначе сдвиг (issue #4124)
@@ -22365,6 +22433,8 @@ class IntegramCreateFormHelper {
  * openEditRecordForm(12345, 3596);
  */
 async function openEditRecordForm(recordId, typeId) {
+    recordId = /^\d+$/.test(String(recordId ?? '').trim()) ? String(recordId).trim() : '';
+    typeId = /^\d+$/.test(String(typeId ?? '').trim()) ? String(typeId).trim() : '';
     if (!recordId) {
         console.error('openEditRecordForm: recordId is required');
         return;

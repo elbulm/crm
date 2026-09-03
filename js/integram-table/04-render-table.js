@@ -165,23 +165,24 @@
                                     : headerColumns.map(col => {
                                         const width = this.columnWidths[col.id];
                                         const widthStyle = width ? ` style="width: ${ width }px; min-width: ${ width }px;"` : '';
-                                        const addButtonHtml = this.shouldShowAddButton(col) ?
-                                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ col.id }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
+                                        const actionColumnId = this.normalizeNumericId(col.id);
+                                        const addButtonHtml = this.shouldShowAddButton(col) && actionColumnId ?
+                                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ actionColumnId }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
                                         let sortIndicator = '';
                                         if (this.sortColumn === col.id) {
                                             sortIndicator = this.sortDirection === 'asc' ? '<i class="pi pi-sort-amount-up-alt" style="font-size:0.75em;"></i> ' : '<i class="pi pi-sort-amount-down" style="font-size:0.75em;"></i> ';
                                         }
-                                        const refTypeId = col.ref;
+                                        const refTypeId = this.normalizeNumericId(col.ref);
                                         const refIconHtml = refTypeId ? (() => {
                                             const dbName = window.db || window.location.pathname.split('/')[1];
                                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                                         })() : '';
                                         return `
-                                            <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }>
-                                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ this.escapeHtml(col.name) }</span>
+                                            <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }>
+                                                <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                                                 ${ refIconHtml }
                                                 ${ addButtonHtml }
-                                                <div class="column-resize-handle" data-column-id="${ col.id }"></div>
+                                                <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
                                             </th>
                                         `;
                                     }).join('');

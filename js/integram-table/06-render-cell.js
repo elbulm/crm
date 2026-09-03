@@ -68,6 +68,9 @@
                 }
             }
 
+            if (refValueId && !isArrayField) {
+                refValueId = this.normalizeNumericId(refValueId) || null;
+            }
             // Check if this column has a style column
             if (this.styleColumns[column.id]) {
                 const styleColId = this.styleColumns[column.id];
@@ -89,26 +92,27 @@
             }
 
             // Handle table requisites (subordinate tables) - display as link with table icon
-            if (column.arr_id) {
+            const subordinateTypeId = this.normalizeNumericId(column.arr_id);
+            if (subordinateTypeId) {
                 cellClass = 'subordinate-link-cell';
-                const count = value !== null && value !== undefined && value !== '' ? value : 0;
+                const count = this.escapeHtml(value !== null && value !== undefined && value !== '' ? value : 0);
                 const instanceName = this.options.instanceName;
                 // Get the record ID from rawObjectData for this row
                 let recordId = null;
                 if (this.rawObjectData && this.rawObjectData[rowIndex]) {
-                    recordId = this.rawObjectData[rowIndex].i;
+                    recordId = this.normalizeNumericId(this.rawObjectData[rowIndex].i);
                 }
                 if (recordId) {
                     // Build URL for "Open in new window" link (issue #729, #733)
                     const pathParts = window.location.pathname.split('/');
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
-                    const subordinateTableUrl = `/${dbName}/table/${column.arr_id}?F_U=${recordId}`;
+                    const subordinateTableUrl = `/${dbName}/table/${subordinateTypeId}?F_U=${recordId}`;
                     // Issue #733: Split into two links - table icon opens new window, count opens modal
-                    displayValue = `<a href="${subordinateTableUrl}" class="subordinate-table-icon-link" target="${column.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${ instanceName }.openSubordinateTableFromCell(event, ${ column.arr_id }, ${ recordId }); return false;" title="Посмотреть подчиненную таблицу">(${ count })</a>`;
+                    displayValue = `<a href="${subordinateTableUrl}" class="subordinate-table-icon-link" target="${subordinateTypeId}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${ instanceName }.openSubordinateTableFromCell(event, ${ subordinateTypeId }, ${ recordId }); return false;" title="Посмотреть подчиненную таблицу">(${ count })</a>`;
                 } else {
                     displayValue = `<span class="table-icon"><i class="pi pi-table"></i></span><span class="subordinate-count">(${ count })</span>`;
                 }
-                return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }" data-arr-id="${ column.arr_id }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
+                return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }" data-arr-id="${ subordinateTypeId }"${ dataTypeAttrs }${ customStyle }>${ displayValue }</td>`;
             }
 
             switch (format) {
@@ -331,6 +335,8 @@
                     typeId = fallbackTypeId;
                 }
 
+                recordId = this.normalizeNumericId(recordId);
+                typeId = this.normalizeNumericId(typeId);
                 const instanceName = this.options.instanceName;
                 // Only show edit icon if recordId exists (disable creating new records)
                 // In object format: show edit icon ONLY for first column or reference fields
@@ -403,7 +409,7 @@
                     // Issue #1794: For "any record" link type, also wrap in lazy-resolved hyperlink
                     let displayContent = escapedValue;
                     if (isRefField && refValueId && !isArrayField) {
-                        const refTypeId = column.orig || column.ref_id || typeId;
+                        const refTypeId = this.normalizeNumericId(column.orig || column.ref_id || typeId);
                         if (refTypeId) {
                             const pathParts = window.location.pathname.split('/');
                             const dbName = pathParts.length >= 2 ? pathParts[1] : '';
@@ -426,7 +432,7 @@
             // Issue #1404: For reference fields without edit icon, still wrap value in a hyperlink
             // inside a cell-content-wrapper when the referenced record ID is available
             if (isRefField && refValueId && !isArrayField && !escapedValue.includes('cell-content-wrapper')) {
-                const refTypeId = column.orig || column.ref_id;
+                const refTypeId = this.normalizeNumericId(column.orig || column.ref_id);
                 if (refTypeId) {
                     const pathParts = window.location.pathname.split('/');
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
@@ -500,6 +506,10 @@
                     }
                 }
 
+                if (recordId !== 'new') {
+                    recordId = this.normalizeNumericId(recordId);
+                }
+
                 // For reference fields, we allow editing even with empty values as long as we can determine parent record
                 // For non-reference fields, we still require a valid recordId
                 // In object format, check for ref_id existence; in report format, check ref === 1
@@ -515,11 +525,11 @@
                     // Add ref attribute if this is a reference field
                     const refAttr = isRefField ? ` data-col-ref="1"` : '';
                     // Store parsed reference value ID from "id:Value" format
-                    const refValueIdAttr = refValueId ? ` data-ref-value-id="${ refValueId }"` : '';
+                    const refValueIdAttr = refValueId ? ` data-ref-value-id="${ this.escapeHtml(refValueId) }"` : '';
                     // Store full value for editing (escape for HTML attribute)
-                    const fullValueAttr = fullValueForEditing ? ` data-full-value="${ fullValueForEditing.replace(/"/g, '&quot;') }"` : '';
+                    const fullValueAttr = fullValueForEditing ? ` data-full-value="${ this.escapeHtml(fullValueForEditing) }"` : '';
                     // Issue #863: For multi-select fields, store raw "ids:values" string so editor can resolve IDs directly
-                    const rawValueAttr = multiRawValue ? ` data-raw-value="${ multiRawValue.replace(/"/g, '&quot;') }"` : '';
+                    const rawValueAttr = multiRawValue ? ` data-raw-value="${ this.escapeHtml(multiRawValue) }"` : '';
                     // Use 'dynamic' as placeholder for recordId if it's empty (will be determined at edit time)
                     const recordIdAttr = recordId && recordId !== '' && recordId !== '0' ? recordId : 'dynamic';
                     // Use paramId for object format (metadata ID), otherwise fall back to type (data type)
@@ -527,7 +537,7 @@
                     // Issue #915: Store typeId for edit icon so updateCellDisplay can add it
                     // when an empty cell gets its first value filled in
                     const editTypeIdAttr = editIconTypeId ? ` data-edit-type-id="${ editIconTypeId }"` : '';
-                    editableAttrs = ` data-editable="true" data-record-id="${ recordIdAttr }" data-col-id="${ column.id }" data-col-type="${ colTypeForParam }" data-col-format="${ format }" data-row-index="${ rowIndex }"${ refAttr }${ refValueIdAttr }${ fullValueAttr }${ rawValueAttr }${ editTypeIdAttr }`;
+                    editableAttrs = ` data-editable="true" data-record-id="${ this.escapeHtml(recordIdAttr) }" data-col-id="${ this.escapeHtml(column.id) }" data-col-type="${ this.escapeHtml(colTypeForParam) }" data-col-format="${ format }" data-row-index="${ rowIndex }"${ refAttr }${ refValueIdAttr }${ fullValueAttr }${ rawValueAttr }${ editTypeIdAttr }`;
                     cellClass += ' inline-editable';
                     if (window.INTEGRAM_DEBUG) {
                         console.log(`  ✓ Cell will be editable with recordId=${recordIdAttr}`);
@@ -547,7 +557,7 @@
 
             // Issue #4385: mirror the record/reference ID onto the parent <td> title so the
             // ID stays discoverable even when the .edit-icon covers the inner wrapper entirely.
-            const cellTitleAttr = cellTitleId ? ` title="${ cellTitleId }"` : '';
+            const cellTitleAttr = cellTitleId ? ` title="${ this.escapeHtml(cellTitleId) }"` : '';
             return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }${ editableAttrs }${ cellTitleAttr }>${ escapedValue }${ rowNumberHtml }</td>`;
         }
 
@@ -771,8 +781,9 @@
                         const rowspan = totalDepth - depth;
                         const width = this.columnWidths[col.id];
                         const widthStyle = width ? ` style="width: ${ width }px; min-width: ${ width }px;"` : '';
-                        const addButtonHtml = this.shouldShowAddButton(col) ?
-                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ col.id }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
+                        const actionColumnId = this.normalizeNumericId(col.id);
+                        const addButtonHtml = this.shouldShowAddButton(col) && actionColumnId ?
+                            `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ actionColumnId }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
                         let sortIndicator = '';
                         if (this.sortColumn === col.id) {
                             sortIndicator = this.sortDirection === 'asc'
@@ -786,17 +797,17 @@
                         const groupingClass = isGroupingCol ? ' group-header' : '';
                         const groupingOrder = isGroupingCol ? this.groupingColumns.indexOf(col.id) + 1 : '';
                         const groupingBadge = isGroupingCol ? `<span class="grouping-header-badge">${ groupingOrder }</span>` : '';
-                        const refTypeId = col.ref_id;
+                        const refTypeId = this.normalizeNumericId(col.ref_id);
                         const refIconHtml = refTypeId ? (() => {
                             const dbName = window.db || window.location.pathname.split('/')[1];
                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                         })() : '';
                         rows[depth].push(`
-                            <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
-                                <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
+                            <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
+                                <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
-                                <div class="column-resize-handle" data-column-id="${ col.id }"></div>
+                                <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
                             </th>
                         `);
                     } else {
@@ -835,8 +846,9 @@
             return allCols.map(col => {
                 const width = this.columnWidths[col.id];
                 const widthStyle = width ? ` style="width: ${ width }px; min-width: ${ width }px;"` : '';
-                const addButtonHtml = this.shouldShowAddButton(col) ?
-                    `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ col.id }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
+                const actionColumnId = this.normalizeNumericId(col.id);
+                const addButtonHtml = this.shouldShowAddButton(col) && actionColumnId ?
+                    `<button class="column-add-btn" onclick="window.${ instanceName }.openColumnCreateForm('${ actionColumnId }')" title="Создать запись"><i class="pi pi-plus"></i></button>` : '';
 
                 // Add sort indicator if this column is sorted
                 let sortIndicator = '';
@@ -850,18 +862,18 @@
                 const groupingOrder = isGroupingCol ? this.groupingColumns.indexOf(col.id) + 1 : '';
                 const groupingBadge = isGroupingCol ? `<span class="grouping-header-badge">${ groupingOrder }</span>` : '';
 
-                const refTypeId = col.ref_id;
+                const refTypeId = this.normalizeNumericId(col.ref_id);
                 const refIconHtml = refTypeId ? (() => {
                     const dbName = window.db || window.location.pathname.split('/')[1];
                     return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                 })() : '';
 
                 return `
-                    <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle } class="${ groupingClass }">
-                        <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
+                    <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle } class="${ groupingClass }">
+                        <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
                         ${ refIconHtml }
                         ${ addButtonHtml }
-                        <div class="column-resize-handle" data-column-id="${ col.id }"></div>
+                        <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
                     </th>
                 `;
             }).join('');

@@ -58,6 +58,10 @@ class IntegramCreateFormHelper {
         return parsed;
     }
 
+    normalizeNumericId(value) {
+        const id = value === null || value === undefined ? '' : String(value).trim();
+        return /^\d+$/.test(id) ? id : '';
+    }
     sanitizeLinkUrl(value) {
         if (value === null || value === undefined) return '';
         const url = String(value).trim();
@@ -1302,6 +1306,12 @@ class IntegramCreateFormHelper {
      * Enhanced with subordinate table tabs and form settings button (issue #837).
      */
     renderEditFormModalStandalone(metadata, recordData, typeId, recordId) {
+        typeId = this.normalizeNumericId(typeId);
+        recordId = this.normalizeNumericId(recordId);
+        if (!typeId || !recordId) {
+            this.showToast('Некорректный идентификатор записи', 'error');
+            return;
+        }
         // Track modal depth for z-index stacking
         if (!window._integramModalDepth) {
             window._integramModalDepth = 0;
@@ -1332,7 +1342,7 @@ class IntegramCreateFormHelper {
         const recordVal = recordData && recordData.obj ? recordData.obj.val : '';
         // #3774: DATETIME-главное-значение → дата-время вместо unix-штампа.
         const title = `Редактирование: ${this.escapeHtml(this.formatRecordTitleValue(recordVal)) || typeName}`;
-        const parentId = recordData && recordData.obj ? recordData.obj.parent : 1;
+        const parentId = this.normalizeNumericId(recordData && recordData.obj ? recordData.obj.parent : 1) || '1';
 
         // Build record ID link HTML
         const pathParts = window.location.pathname.split('/');
@@ -1352,7 +1362,7 @@ class IntegramCreateFormHelper {
         const regularFields = reqs.filter(req => !req.arr_id);
 
         // Separate subordinate tables (issue #837)
-        const subordinateTables = reqs.filter(req => req.arr_id);
+        const subordinateTables = reqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
         const hasSubordinateTables = subordinateTables.length > 0 && recordId;
 
         // Build tabs HTML (issue #837)
@@ -1364,8 +1374,10 @@ class IntegramCreateFormHelper {
             subordinateTables.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
                 const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-                const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
-                tabsHtml += `<div class="edit-form-tab" data-tab="sub-${req.id}" data-arr-id="${req.arr_id}" data-req-id="${req.id}">${fieldName} (${arrCount})</div>`;
+                const arrCount = this.escapeHtml(recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0);
+                const reqId = this.normalizeNumericId(req.id);
+                const arrId = this.normalizeNumericId(req.arr_id);
+                tabsHtml += `<div class="edit-form-tab" data-tab="sub-${reqId}" data-arr-id="${arrId}" data-req-id="${reqId}">${fieldName} (${arrCount})</div>`;
             });
 
             tabsHtml += `</div>`;
@@ -1395,7 +1407,7 @@ class IntegramCreateFormHelper {
         if (hasSubordinateTables) {
             subordinateTables.forEach(req => {
                 formHtml += `
-                    <div class="edit-form-tab-content" data-tab-content="sub-${req.id}">
+                    <div class="edit-form-tab-content" data-tab-content="sub-${this.normalizeNumericId(req.id)}">
                         <div class="subordinate-table-loading">Загрузка...</div>
                     </div>
                 `;
@@ -1512,10 +1524,10 @@ class IntegramCreateFormHelper {
                 }
 
                 // Load subordinate table if needed
-                const parentRecordId = modal.dataset.recordId;
+                const parentRecordId = self.normalizeNumericId(modal.dataset.recordId);
                 if (tabId.startsWith('sub-') && tab.dataset.arrId && parentRecordId) {
-                    const arrId = tab.dataset.arrId;
-                    const reqId = tab.dataset.reqId;
+                    const arrId = self.normalizeNumericId(tab.dataset.arrId);
+                    const reqId = self.normalizeNumericId(tab.dataset.reqId);
 
                     // Check if already loaded
                     if (!targetContent.dataset.loaded) {
@@ -1543,6 +1555,12 @@ class IntegramCreateFormHelper {
      * Load subordinate table content (issue #837).
      */
     async loadSubordinateTableStandalone(container, arrId, parentRecordId, reqId) {
+        arrId = this.normalizeNumericId(arrId);
+        parentRecordId = this.normalizeNumericId(parentRecordId);
+        if (!arrId || !parentRecordId) {
+            container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+            return;
+        }
         if (!container.querySelector('.subordinate-table')) {
             container.innerHTML = '<div class="subordinate-table-loading">Загрузка...</div>';
         }
@@ -1566,7 +1584,7 @@ class IntegramCreateFormHelper {
 
         } catch (error) {
             console.error('Error loading subordinate table:', error);
-            container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${error.message}</div>`;
+            container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${this.escapeHtml(error.message)}</div>`;
         }
     }
 
@@ -1620,6 +1638,12 @@ class IntegramCreateFormHelper {
      * Uses the same CSS classes as the main renderSubordinateTable method.
      */
     renderSubordinateTableStandalone(container, metadata, data, arrId, parentRecordId) {
+        arrId = this.normalizeNumericId(arrId);
+        parentRecordId = this.normalizeNumericId(parentRecordId);
+        if (!arrId || !parentRecordId) {
+            container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+            return;
+        }
         const typeName = this.escapeHtml(this.getMetadataName(metadata));
         const records = Array.isArray(data) ? data : [];
         const reqs = metadata.reqs || [];
@@ -1665,13 +1689,13 @@ class IntegramCreateFormHelper {
 
             // Data rows
             records.forEach((record, rowIndex) => {
-                const recordId = record.i;
+                const recordId = this.normalizeNumericId(record.i);
                 const values = record.r || [];
                 html += `<tr data-row-id="${recordId}" style="cursor:pointer;">`;
 
                 // Main value column (clickable)
                 const mainValue = this.formatSubordinateCellDisplay(values[0] || '', metadata.type);
-                html += `<td class="subordinate-cell-clickable subordinate-cell-with-row-number" data-row="${rowIndex}" data-record-id="${recordId}" data-type-id="${arrId}">${mainValue}<span class="subordinate-row-number">${rowIndex + 1}</span></td>`;
+                html += `<td class="subordinate-cell-with-row-number${recordId ? ' subordinate-cell-clickable' : ''}" data-row="${rowIndex}" data-record-id="${recordId}" data-type-id="${arrId}">${mainValue}<span class="subordinate-row-number">${rowIndex + 1}</span></td>`;
 
                 // Requisite columns. Вложенные (arr_id) колонки не рисуются, но слот в r[]
                 // занимают — valIdx двигается на каждом реквизите, иначе сдвиг (issue #4124)
@@ -2613,6 +2637,8 @@ class IntegramCreateFormHelper {
  * openEditRecordForm(12345, 3596);
  */
 async function openEditRecordForm(recordId, typeId) {
+    recordId = /^\d+$/.test(String(recordId ?? '').trim()) ? String(recordId).trim() : '';
+    typeId = /^\d+$/.test(String(typeId ?? '').trim()) ? String(typeId).trim() : '';
     if (!recordId) {
         console.error('openEditRecordForm: recordId is required');
         return;

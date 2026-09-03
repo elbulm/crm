@@ -37,6 +37,7 @@
             // #1481) и сравнения; форматируем только видимый текст заголовка/вкладки браузера.
             const firstColumnDisplay = firstColumnValue != null ? this.formatRecordTitleValue(firstColumnValue) : null;
             const title = isCreate ? `Создание: ${ typeName }` : `Редактирование: ${ this.escapeHtml(firstColumnDisplay || rawTypeName) }`;
+            const safeTypeId = this.normalizeNumericId(typeId);
             const instanceName = this.options.instanceName;
 
             // Save and update navbar-workspace + document.title with object value
@@ -47,19 +48,20 @@
             const truncatedValue = objectValue && objectValue.length > 32 ? objectValue.slice(0, 32) + '...' : objectValue;
             if (navbarWorkspace) navbarWorkspace.textContent = truncatedValue;
             document.title = truncatedValue;
-            const recordId = recordData && recordData.obj ? recordData.obj.id : null;
+            const recordId = this.normalizeNumericId(recordData && recordData.obj ? recordData.obj.id : null);
             // Issue #616: For create mode, use F_U from URL as parent when F_U > 1
-            const defaultParentId = (this.options.parentId && parseInt(this.options.parentId) > 1) ? this.options.parentId : 1;
-            const parentId = recordData && recordData.obj && recordData.obj.parent ? recordData.obj.parent : defaultParentId;
+            const configuredParentId = this.normalizeNumericId(this.options.parentId);
+            const defaultParentId = configuredParentId && Number(configuredParentId) > 1 ? configuredParentId : '1';
+            const parentId = this.normalizeNumericId(recordData && recordData.obj && recordData.obj.parent ? recordData.obj.parent : defaultParentId) || defaultParentId;
 
             // Build record ID and table link HTML for edit mode (issue #563)
             let recordIdHtml = '';
-            if (!isCreate && recordId) {
+            if (!isCreate && recordId && safeTypeId) {
                 // Extract database name from URL path
                 const pathParts = window.location.pathname.split('/');
                 const dbName = pathParts.length >= 2 ? pathParts[1] : '';
                 // Build table URL with filters: /{dbName}/table/{typeId}?F_U={parentId}&F_I={recordId}
-                const tableUrl = `/${dbName}/table/${typeId}?F_U=${parentId || 1}&F_I=${recordId}`;
+                const tableUrl = `/${dbName}/table/${safeTypeId}?F_U=${parentId}&F_I=${recordId}`;
 
                 recordIdHtml = `
                     <span class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID">#${recordId}</span>
@@ -81,7 +83,7 @@
             });
 
             const regularFields = sortedReqs.filter(req => !req.arr_id);
-            const subordinateTables = sortedReqs.filter(req => req.arr_id);
+            const subordinateTables = sortedReqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
 
             // Build tabs HTML
             let tabsHtml = '';
@@ -94,8 +96,10 @@
                 subordinateTables.forEach(req => {
                     const attrs = this.parseAttrs(req.attrs);
                     const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-                    const arrCount = recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0;
-                    tabsHtml += `<div class="edit-form-tab" data-tab="sub-${ req.id }" data-arr-id="${ req.arr_id }" data-req-id="${ req.id }">${ fieldName } (${ arrCount })</div>`;
+                    const arrCount = this.escapeHtml(recordReqs[req.id] ? recordReqs[req.id].arr || 0 : 0);
+                    const reqId = this.normalizeNumericId(req.id);
+                    const arrId = this.normalizeNumericId(req.arr_id);
+                    tabsHtml += `<div class="edit-form-tab" data-tab="sub-${ reqId }" data-arr-id="${ arrId }" data-req-id="${ reqId }">${ fieldName } (${ arrCount })</div>`;
                 });
 
                 tabsHtml += `</div>`;
@@ -137,7 +141,7 @@
             if (hasSubordinateTables) {
                 subordinateTables.forEach(req => {
                     formHtml += `
-                        <div class="edit-form-tab-content" data-tab-content="sub-${ req.id }">
+                        <div class="edit-form-tab-content" data-tab-content="sub-${ this.normalizeNumericId(req.id) }">
                             <div class="subordinate-table-loading">Загрузка...</div>
                         </div>
                     `;
@@ -686,10 +690,10 @@
 
                     // Load subordinate table if needed
                     // Use modal.dataset.recordId to support nested modals (issue #741)
-                    const parentRecordId = modal.dataset.recordId;
+                    const parentRecordId = this.normalizeNumericId(modal.dataset.recordId);
                     if (tabId.startsWith('sub-') && tab.dataset.arrId && parentRecordId) {
-                        const arrId = tab.dataset.arrId;
-                        const reqId = tab.dataset.reqId;
+                        const arrId = this.normalizeNumericId(tab.dataset.arrId);
+                        const reqId = this.normalizeNumericId(tab.dataset.reqId);
 
                         // Check if already loaded
                         if (!targetContent.dataset.loaded) {
@@ -716,6 +720,12 @@
         }
 
         async loadSubordinateTable(container, arrId, parentRecordId, reqId) {
+            arrId = this.normalizeNumericId(arrId);
+            parentRecordId = this.normalizeNumericId(parentRecordId);
+            if (!arrId || !parentRecordId) {
+                container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+                return;
+            }
             const hasContent = !!container.querySelector('.subordinate-table');
             if (hasContent) {
                 // Keep existing content visible but dimmed, show spinner overlay (issue #2580)
@@ -762,7 +772,7 @@
 
             } catch (error) {
                 console.error('Error loading subordinate table:', error);
-                container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${ error.message }</div>`;
+                container.innerHTML = `<div class="subordinate-table-error">Ошибка загрузки: ${ this.escapeHtml(error.message) }</div>`;
             }
         }
 
@@ -875,7 +885,7 @@
 
                     pageRows.forEach((row, rowOffset) => {
                         const rowIndex = startRowIndex + rowOffset;
-                        const rowId = row.i;
+                        const rowId = this.normalizeNumericId(row.i);
                         const values = row.r || [];
                         const tr = document.createElement('tr');
                         tr.dataset.rowId = rowId;
@@ -896,7 +906,7 @@
                             displayMainValue = this.highlightSearchTerm(displayMainValue, searchTerm);
                         }
                         const mainTd = document.createElement('td');
-                        mainTd.className = 'subordinate-cell-clickable';
+                        mainTd.className = rowId ? 'subordinate-cell-clickable' : '';
                         mainTd.dataset.rowId = rowId;
                         mainTd.dataset.typeId = arrId;
                         mainTd.innerHTML = displayMainValue;
@@ -910,10 +920,11 @@
                             const cellValue = values[idx + 1] !== undefined ? values[idx + 1] : '';
                             const td = document.createElement('td');
                             if (req.arr_id) {
-                                const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
-                                const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
+                                const count = this.escapeHtml(typeof cellValue === 'number' ? cellValue : (cellValue || 0));
+                                const nestedTypeId = this.normalizeNumericId(req.arr_id);
+                                const nestedTableUrl = nestedTypeId && rowId ? `/${dbName}/table/${nestedTypeId}?F_U=${rowId}` : '';
                                 td.className = 'subordinate-nested-count';
-                                td.innerHTML = `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>`;
+                                td.innerHTML = nestedTableUrl ? `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${nestedTypeId}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${nestedTypeId}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>` : `<span class="subordinate-count">(${count})</span>`;
                             } else {
                                 let displayValue = this.formatSubordinateCellValue(cellValue, req);
                                 if (searchTerm) {
@@ -961,8 +972,15 @@
          * @param {number} parentRecordId - Parent record ID
          */
         async openSubordinateTableFromCell(event, arrId, parentRecordId) {
+            arrId = this.normalizeNumericId(arrId);
+            parentRecordId = this.normalizeNumericId(parentRecordId);
             event.preventDefault();
             event.stopPropagation();
+
+            if (!arrId || !parentRecordId) {
+                this.showToast('Некорректный идентификатор таблицы', 'error');
+                return;
+            }
 
             // Remember the clicked cell so we can update its count on close (issue #1839)
             const clickedCountCell = event.target.closest('td');
@@ -1088,6 +1106,12 @@
         }
 
         renderSubordinateTable(container, metadata, data, arrId, parentRecordId, sortState = null, searchTerm = '') {
+            arrId = this.normalizeNumericId(arrId);
+            parentRecordId = this.normalizeNumericId(parentRecordId);
+            if (!arrId || !parentRecordId) {
+                container.innerHTML = '<div class="subordinate-table-error">Некорректный идентификатор таблицы</div>';
+                return;
+            }
             const instanceName = this.options.instanceName;
             let rows = Array.isArray(data) ? [...data] : [];
             const reqs = metadata.reqs || [];
@@ -1181,7 +1205,7 @@
 
                 // Data rows
                 rows.forEach((row, rowIndex) => {
-                    const rowId = row.i;
+                    const rowId = this.normalizeNumericId(row.i);
                     const values = row.r || [];
 
                     html += `<tr data-row-id="${ rowId }" draggable="false">`;
@@ -1196,17 +1220,18 @@
                     if (searchTerm) {
                         displayMainValue = this.highlightSearchTerm(displayMainValue, searchTerm);
                     }
-                    html += `<td class="subordinate-cell-clickable" data-row-id="${ rowId }" data-type-id="${ arrId }">${ displayMainValue }</td>`;
+                    html += `<td${ rowId ? ' class="subordinate-cell-clickable"' : '' } data-row-id="${ rowId }" data-type-id="${ arrId }">${ displayMainValue }</td>`;
 
                     // Other columns
                     reqs.forEach((req, idx) => {
                         const cellValue = values[idx + 1] !== undefined ? values[idx + 1] : '';
 
                         if (req.arr_id) {
-                            const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
+                            const count = this.escapeHtml(typeof cellValue === 'number' ? cellValue : (cellValue || 0));
+                            const nestedTypeId = this.normalizeNumericId(req.arr_id);
                             // Issue #737: Use the same icon styling as .subordinate-link-cell in main table
-                            const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
-                            html += `<td class="subordinate-nested-count"><a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a></td>`;
+                            const nestedTableUrl = nestedTypeId && rowId ? `/${dbName}/table/${nestedTypeId}?F_U=${rowId}` : '';
+                            html += `<td class="subordinate-nested-count">${ nestedTableUrl ? `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${nestedTypeId}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${nestedTypeId}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>` : `<span class="subordinate-count">(${count})</span>` }</td>`;
                         } else {
                             let displayValue = this.formatSubordinateCellValue(cellValue, req);
                             if (searchTerm) {

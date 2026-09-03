@@ -2935,8 +2935,8 @@
 
             // Issue #1404: For reference fields, wrap the value in a hyperlink inside cell-content-wrapper
             const cellIsRef = cell.dataset.ref === '1';
-            const cellRefValueId = cell.dataset.refValueId;
-            const cellEditTypeId = cell.dataset.editTypeId;
+            const cellRefValueId = this.normalizeNumericId(cell.dataset.refValueId);
+            const cellEditTypeId = this.normalizeNumericId(cell.dataset.editTypeId);
             if (cellIsRef && cellRefValueId && cellEditTypeId && !cell.dataset.array) {
                 const pathParts = window.location.pathname.split('/');
                 const dbName = pathParts.length >= 2 ? pathParts[1] : '';
@@ -2955,14 +2955,14 @@
             } else {
                 // Issue #915: If the cell was empty (no edit icon) and now has a value,
                 // add the edit icon using the stored data-edit-type-id attribute
-                const editTypeId = cell.dataset.editTypeId;
+                const editTypeId = this.normalizeNumericId(cell.dataset.editTypeId);
                 // Issue #921: For reference fields, use data-ref-value-id as the record ID
                 // (the reference's own ID, e.g. role ID 520), not data-record-id (the parent
                 // row's ID, e.g. user ID 557). data-ref-value-id is updated by saveReferenceEdit.
-                const editRecordId = cell.dataset.refValueId || cell.dataset.recordId;
-                const editRowIndex = cell.dataset.rowIndex;
+                const editRecordId = this.normalizeNumericId(cell.dataset.refValueId || cell.dataset.recordId);
+                const editRowIndex = parseInt(cell.dataset.rowIndex, 10);
                 const hasNewValue = newValue !== null && newValue !== undefined && newValue !== '';
-                if (hasNewValue && editTypeId && editRecordId && editRecordId !== '' && editRecordId !== '0' && editRecordId !== 'dynamic') {
+                if (hasNewValue && editTypeId && editRecordId && Number.isInteger(editRowIndex) && editRowIndex >= 0) {
                     const instanceName = this.options.instanceName;
                     // Issue #1810: any-ref cell — resolve real table via get_record before opening form
                     const isAnyRefCell = cell.dataset.anyRef === '1';

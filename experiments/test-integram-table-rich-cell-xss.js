@@ -36,6 +36,7 @@ function extractMethod(source, name) {
 const Host = new Function(
     'class Host {' +
     extractMethod(utilsSource, 'escapeHtml') +
+    extractMethod(utilsSource, 'normalizeNumericId') +
     extractMethod(utilsSource, 'sanitizeLinkUrl') +
     extractMethod(utilsSource, 'sanitizeCellStyle') +
     extractMethod(utilsSource, 'sanitizeCellHtml') +
@@ -49,6 +50,13 @@ assert.strictEqual(
     '&lt;img src=x onerror=alert(1)&gt;',
     'HTML sanitizer must fail closed when no DOM parser is available'
 );
+
+assert.strictEqual(host.normalizeNumericId(42), '42',
+    'numeric IDs must remain usable');
+assert.strictEqual(host.normalizeNumericId("1');alert(1)//"), '',
+    'script-bearing IDs must be rejected instead of interpolated into handlers');
+assert.strictEqual(host.normalizeNumericId('12x'), '',
+    'partially numeric IDs must be rejected');
 
 assert.strictEqual(host.sanitizeLinkUrl('javascript:alert(1)'), '',
     'javascript URLs must be rejected');
@@ -88,6 +96,14 @@ assert(renderCellSource.includes('this.sanitizeCellHtml(value)'),
     'server-provided FILE anchors must pass through the sanitizer');
 assert(!renderCellSource.includes('btnOnclick'),
     'BUTTON values must never be copied into inline onclick');
+assert(renderCellSource.includes('const subordinateTypeId = this.normalizeNumericId(column.arr_id);'),
+    'subordinate actions must validate table IDs before building inline handlers');
+assert(renderCellSource.includes('const actionColumnId = this.normalizeNumericId(col.id);'),
+    'column create buttons must validate metadata IDs before building inline handlers');
+assert(formEditSource.includes('const nestedTypeId = this.normalizeNumericId(req.arr_id);'),
+    'nested subordinate actions must validate metadata IDs before building inline handlers');
+assert(helperSource.includes("recordId = /^\\d+$/.test(String(recordId ?? '').trim())"),
+    'standalone edit entry point must validate IDs before network requests');
 
 assert(renderCellSource.includes('colHeaders.map(h => `<th>${ this.escapeHtml(String(h)) }</th>`)'),
     'paste preview headers must be HTML-escaped');

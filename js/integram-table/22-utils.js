@@ -224,6 +224,10 @@
             return result.path || result.file || result.filename;
         }
 
+        normalizeNumericId(value) {
+            const id = value === null || value === undefined ? '' : String(value).trim();
+            return /^\d+$/.test(id) ? id : '';
+        }
         sanitizeLinkUrl(value) {
             if (value === null || value === undefined) return '';
             const url = String(value).trim();
