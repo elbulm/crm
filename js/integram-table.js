@@ -990,22 +990,42 @@ class IntegramTable{
          * server message instead of a cryptic "Unexpected token ..." parse error
          * (issue #2758).
          */
-        async fetchJson(url) {
-            const response = await fetch(url);
+        async fetchJson(url, options) {
+            const response = await fetch(url, options);
             const text = await response.text();
+            const trimmed = (text || '').trim();
+            let parsed = null;
 
-            try {
-                return text === '' ? null : JSON.parse(text);
-            } catch (parseError) {
-                const trimmed = (text || '').trim();
-                const preview = trimmed
-                    ? trimmed.slice(0, 300)
-                    : `HTTP ${ response.status } ${ response.statusText }`.trim();
-                const error = new Error(preview);
-                error.isNonJsonResponse = true;
+            if (text !== '') {
+                try {
+                    parsed = JSON.parse(text);
+                } catch (parseError) {
+                    const preview = trimmed
+                        ? trimmed.slice(0, 300)
+                        : `HTTP ${ response.status } ${ response.statusText }`.trim();
+                    const error = new Error(preview);
+                    error.isNonJsonResponse = true;
+                    error.status = response.status;
+                    throw error;
+                }
+            }
+
+            if (!response.ok) {
+                let message = '';
+                if (parsed && typeof parsed === 'object') {
+                    message = parsed.error || parsed.message ||
+                        (Array.isArray(parsed) && parsed[0] && (parsed[0].error || parsed[0].message)) || '';
+                }
+                if (!message) {
+                    message = trimmed || `HTTP ${ response.status } ${ response.statusText }`.trim();
+                }
+                const error = new Error(String(message).slice(0, 300));
                 error.status = response.status;
+                error.response = parsed;
                 throw error;
             }
+
+            return parsed;
         }
 
         async loadDataFromReport(append = false) {
@@ -18849,33 +18869,49 @@ class IntegramTable{
 
         /**
          * Load all data matching current filters for export
-         * Requests all data in a single request with LIMIT=1000000
+         * Requests data in bounded pages and refuses silent truncation above the safety cap
          * @returns {Promise<Array>} Array of all data rows
          */
         async loadAllDataForExport() {
-            try {
-                let json;
-                const maxLimit = 1000000; // Request up to 1 million records in single request
+            const batchSize = 5000;
+            const maximumRows = 1000000;
+            const rows = [];
+            const useTableSource = this.getDataSourceType() === 'table' ||
+                (this.objectTableId && !this.options.tableTypeId);
+            const savedTableTypeId = this.options.tableTypeId;
 
-                if (this.getDataSourceType() === 'table' || (this.objectTableId && !this.options.tableTypeId)) {
-                    // Load data from table format (issue #697)
-                    // Use objectTableId if tableTypeId is not explicitly set (auto-detected JSON_OBJ format)
-                    const savedTableTypeId = this.options.tableTypeId;
-                    if (!this.options.tableTypeId && this.objectTableId) {
-                        this.options.tableTypeId = this.objectTableId;
-                    }
-                    json = await this.loadDataFromTableForExport(0, maxLimit);
-                    this.options.tableTypeId = savedTableTypeId;
-                } else {
-                    // Load data from report format
-                    json = await this.loadDataFromReportForExport(0, maxLimit);
+            try {
+                if (useTableSource && !this.options.tableTypeId && this.objectTableId) {
+                    this.options.tableTypeId = this.objectTableId;
                 }
 
-                return json.rows || [];
+                let offset = 0;
+                while (true) {
+                    // Fetch one extra row across the whole export so hitting the cap
+                    // is reported instead of silently producing a truncated file.
+                    const remainingWithProbe = maximumRows + 1 - rows.length;
+                    const limit = Math.min(batchSize, remainingWithProbe);
+                    const page = useTableSource
+                        ? await this.loadDataFromTableForExport(offset, limit)
+                        : await this.loadDataFromReportForExport(offset, limit);
+                    const pageRows = page && Array.isArray(page.rows) ? page.rows : [];
 
+                    for (const row of pageRows) rows.push(row);
+                    if (rows.length > maximumRows) {
+                        throw new Error(`Экспорт ограничен ${ maximumRows } строками. Уточните фильтр и повторите.`);
+                    }
+                    if (pageRows.length < limit) break;
+                    offset += pageRows.length;
+                }
+
+                return rows;
             } catch (error) {
                 console.error('Error loading export data:', error);
                 throw error;
+            } finally {
+                if (useTableSource) {
+                    this.options.tableTypeId = savedTableTypeId;
+                }
             }
         }
 
@@ -18926,8 +18962,7 @@ class IntegramTable{
             }
 
             const separator = baseUrl.includes('?') ? '&' : '?';
-            const response = await fetch(`${ baseUrl }${ separator }${ params }`);
-            const json = await response.json();
+            const json = await this.fetchJson(`${ baseUrl }${ separator }${ params }`);
 
             // Check if this is object format
             if (this.isObjectFormat(json)) {
@@ -18973,6 +19008,9 @@ class IntegramTable{
             if (this.options.parentId) {
                 params.set('F_U', this.options.parentId);
             }
+            if (this.options.recordId) {
+                params.set('F_I', this.options.recordId);
+            }
 
             // Apply current filters
             const filters = this.filters || {};
@@ -18998,8 +19036,7 @@ class IntegramTable{
             const apiBase = this.getApiBase();
             const url = `${ apiBase }/object/${ this.options.tableTypeId }/?${ params }`;
 
-            const response = await fetch(url);
-            const json = await response.json();
+            const json = await this.fetchJson(url);
 
             // Parse JSON_OBJ format
             if (this.isJsonDataArrayFormat(json)) {

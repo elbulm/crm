@@ -973,22 +973,42 @@
          * server message instead of a cryptic "Unexpected token ..." parse error
          * (issue #2758).
          */
-        async fetchJson(url) {
-            const response = await fetch(url);
+        async fetchJson(url, options) {
+            const response = await fetch(url, options);
             const text = await response.text();
+            const trimmed = (text || '').trim();
+            let parsed = null;
 
-            try {
-                return text === '' ? null : JSON.parse(text);
-            } catch (parseError) {
-                const trimmed = (text || '').trim();
-                const preview = trimmed
-                    ? trimmed.slice(0, 300)
-                    : `HTTP ${ response.status } ${ response.statusText }`.trim();
-                const error = new Error(preview);
-                error.isNonJsonResponse = true;
+            if (text !== '') {
+                try {
+                    parsed = JSON.parse(text);
+                } catch (parseError) {
+                    const preview = trimmed
+                        ? trimmed.slice(0, 300)
+                        : `HTTP ${ response.status } ${ response.statusText }`.trim();
+                    const error = new Error(preview);
+                    error.isNonJsonResponse = true;
+                    error.status = response.status;
+                    throw error;
+                }
+            }
+
+            if (!response.ok) {
+                let message = '';
+                if (parsed && typeof parsed === 'object') {
+                    message = parsed.error || parsed.message ||
+                        (Array.isArray(parsed) && parsed[0] && (parsed[0].error || parsed[0].message)) || '';
+                }
+                if (!message) {
+                    message = trimmed || `HTTP ${ response.status } ${ response.statusText }`.trim();
+                }
+                const error = new Error(String(message).slice(0, 300));
                 error.status = response.status;
+                error.response = parsed;
                 throw error;
             }
+
+            return parsed;
         }
 
         async loadDataFromReport(append = false) {

@@ -182,6 +182,24 @@ const rootDir = path.join(__dirname, '..');
     );
     assert.strictEqual(caught.isNonJsonResponse, true, 'fetchJson tags the error');
 
+    // A valid JSON body on a non-2xx response is still an error. Previously it
+    // was returned as if the request had succeeded.
+    nextFetchHandler = () => Promise.resolve({
+        ok: false,
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        text() { return Promise.resolve('{"error":"Invalid filter"}'); },
+    });
+    caught = null;
+    try {
+        await instance.fetchJson('/api/test');
+    } catch (error) {
+        caught = error;
+    }
+    assert.ok(caught, 'fetchJson should reject non-2xx JSON responses');
+    assert.strictEqual(caught.message, 'Invalid filter', 'fetchJson surfaces the JSON error message');
+    assert.strictEqual(caught.status, 422, 'fetchJson preserves the HTTP status');
+
     // --- Part 2: handleLoadDataError keeps filters when columns exist ----
     instance.columns = [
         { id: '101', name: 'Имя', format: 'CHARS', granted: 0, ref: 0 },
