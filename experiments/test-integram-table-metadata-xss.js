@@ -12,6 +12,9 @@ const renderTable = read('04-render-table.js');
 const renderCell = read('06-render-cell.js');
 const grouping = read('13-grouping.js');
 const urlConfig = read('14-url-config.js');
+const state = read('16-state.js');
+const refFilter = read('17-ref-filter.js');
+const columnSettings = read('11-column-settings.js');
 const formSources = [
     read('07-inline-edit.js'),
     read('19-form-edit.js'),
@@ -38,11 +41,28 @@ assert(urlConfig.includes('this.escapeHtml(hf.colName)'),
     'hidden-filter column names must be escaped');
 assert(urlConfig.includes('this.escapeHtml(displayValue)'),
     'hidden-filter values must be escaped');
+assert((urlConfig.match(/this\.normalizeNumericId\(key\.substring/g) || []).length === 3,
+    'FR_, F_ and TO_ URL filter keys must have strictly numeric column IDs');
+assert(state.includes('typeId = this.normalizeNumericId(typeId);'),
+    'metadata IDs must be validated before metadata requests');
+assert(state.includes('requisiteId = this.normalizeNumericId(requisiteId);'),
+    'requisite IDs must be validated before reference requests');
+assert(!renderTable.includes('data-column-id="${ column.id }"'),
+    'filter column IDs must be escaped in DOM attributes');
+assert(!columnSettings.includes('data-column-id="${ col.id }"'),
+    'column settings IDs must be escaped in DOM attributes');
+assert(refFilter.includes('data-id="${this.escapeHtml(id)}"'),
+    'reference filter option IDs must be escaped in DOM attributes');
 
 for (const source of formSources) {
     assert(!source.includes('const fieldName = attrs.alias || req.val;'),
         'form field names must be escaped before HTML rendering');
 }
+const combinedFormSource = formSources.join('\n');
+assert((combinedFormSource.match(/!req\.arr_id && this\.normalizeNumericId\(req\.id\)/g) || []).length >= 6,
+    'every form renderer must reject non-numeric requisite IDs before building attributes');
+assert(!combinedFormSource.includes('data-id="${id}"') && !combinedFormSource.includes('data-id="${ id }"'),
+    'reference option IDs must not be inserted into form attributes without escaping');
 assert(renderCell.includes('this.sanitizeCellStyle(styleValue)'),
     'STYLE companion values must be allow-list sanitized');
 

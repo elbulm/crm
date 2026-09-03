@@ -27,7 +27,7 @@
 
             // Build form for regular fields only (no nested subordinate tables in create mode)
             const reqs = metadata.reqs || [];
-            const regularFields = reqs.filter(req => !req.arr_id);
+            const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
             // Determine the type of the main (first column) field
             const mainFieldType = this.normalizeFormat(metadata.type);
@@ -100,7 +100,7 @@
                 // Multi-select reference field (issue #1772)
                 if (req.ref_id && isMulti) {
                     formHtml += `
-                        <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ req.orig || req.ref_id }" data-ref-base-type="${ req.type }" data-multi="1" data-current-value="">
+                        <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ this.normalizeNumericId(req.orig || req.ref_id) }" data-ref-base-type="${ this.escapeHtml(req.type) }" data-multi="1" data-current-value="">
                             <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                                 <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                     <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -129,7 +129,7 @@
                 // Single-select reference field
                 else if (req.ref_id) {
                     formHtml += `
-                        <div class="form-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ req.orig || req.ref_id }" data-ref-base-type="${ req.type }">
+                        <div class="form-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ this.normalizeNumericId(req.orig || req.ref_id) }" data-ref-base-type="${ this.escapeHtml(req.type) }">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"
@@ -932,7 +932,7 @@
                         const id = String(rec.i);
                         const text = (rec.r && rec.r[0] != null) ? String(rec.r[0]) : `#${ id }`;
                         const escaped = this.escapeHtml(text);
-                        return `<div class="inline-editor-reference-option" data-id="${ id }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                        return `<div class="inline-editor-reference-option" data-id="${ this.escapeHtml(id) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                     }).join('');
                 };
 
@@ -951,7 +951,7 @@
                         }
                         dropdown.innerHTML = entries.map(([tId, tName]) => {
                             const escaped = this.escapeHtml(String(tName));
-                            return `<div class="inline-editor-reference-option form-any-ref-table-option" data-table-id="${ tId }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                            return `<div class="inline-editor-reference-option form-any-ref-table-option" data-table-id="${ this.escapeHtml(tId) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                         }).join('');
                         // Table selected: load its records (issue #1807)
                         dropdown.querySelectorAll('.form-any-ref-table-option').forEach(opt => {
@@ -1210,7 +1210,7 @@
                     } else {
                         dropdown.innerHTML = filtered.map(([id, text]) => {
                             const et = this.escapeHtml(this.decodeHtmlEntities(text));
-                            return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                            return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                         }).join('');
                     }
                 };
@@ -1598,7 +1598,7 @@
             const decodedInitialValue = this.decodeHtmlEntities(initialValue);
 
             const reqs = metadata.reqs || [];
-            const regularFields = reqs.filter(req => !req.arr_id);
+            const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
             // Get current date/datetime for default values
             const now = new Date();
@@ -1657,7 +1657,7 @@
                 if (req.ref_id) {
                     // Render as reference dropdown (same as in edit form)
                     attributesHtml += `
-                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}" data-ref-base-type="${req.type}">
+                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}" data-ref-base-type="${this.escapeHtml(req.type)}">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"

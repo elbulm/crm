@@ -240,7 +240,8 @@
 
                 // Check for FR_ prefix
                 if (key.startsWith('FR_')) {
-                    const colId = key.substring(3);  // Remove 'FR_' prefix
+                    const colId = this.normalizeNumericId(key.substring(3));  // Remove 'FR_' prefix
+                    if (!colId) continue;
                     const parsed = this.parseFilterValue(value);
                     urlFilters[colId] = {
                         type: parsed.type,
@@ -256,7 +257,8 @@
                 // Check for F_ prefix (alternative filter format) - issue #549
                 // Note: F_U is excluded above as it's used for parentId
                 else if (key.startsWith('F_')) {
-                    const colId = key.substring(2);  // Remove 'F_' prefix
+                    const colId = this.normalizeNumericId(key.substring(2));  // Remove 'F_' prefix
+                    if (!colId) continue;
                     const parsed = this.parseFilterValue(value);
                     urlFilters[colId] = {
                         type: parsed.type,
@@ -271,7 +273,8 @@
                 }
                 // Check for TO_ prefix (range filter second part)
                 else if (key.startsWith('TO_')) {
-                    const colId = key.substring(3);  // Remove 'TO_' prefix
+                    const colId = this.normalizeNumericId(key.substring(3));  // Remove 'TO_' prefix
+                    if (!colId) continue;
                     // If we already have a FR_ or F_ for this column, combine into range
                     if (urlFilters[colId]) {
                         urlFilters[colId].type = '...';

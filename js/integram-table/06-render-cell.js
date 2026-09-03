@@ -614,7 +614,7 @@
                             : '';
 
                         // Render the group cell with special styling
-                        rowsHtml += `<td class="group-cell"${ rowspan } data-group-column="${ groupCell.colId }">`;
+                        rowsHtml += `<td class="group-cell"${ rowspan } data-group-column="${ this.escapeHtml(groupCell.colId) }">`;
                         rowsHtml += `<span class="group-cell-content">${ this.escapeHtml(String(cellValue || '')) }</span>`;
                         rowsHtml += addButtonHtml;
                         rowsHtml += `</td>`;

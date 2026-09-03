@@ -300,12 +300,12 @@
                     return `
                         <td>
                             <div class="filter-cell-wrapper">
-                                <span class="filter-icon-inside" data-column-id="${ column.id }">
+                                <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                     ${ currentFilter.type }
                                 </span>
                                 <input type="text"
                                        class="filter-input-with-icon filter-ref-text-input"
-                                       data-column-id="${ column.id }"
+                                       data-column-id="${ this.escapeHtml(column.id) }"
                                        value="${ this.escapeHtml(displayValue) }"
                                        placeholder="${ placeholder }"
                                        autocomplete="off">
@@ -353,13 +353,13 @@
                 return `
                     <td>
                         <div class="filter-cell-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ column.id }">
+                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                 ${ currentFilter.type }
                             </span>
                             <button type="button"
                                     class="filter-ref-trigger"
-                                    data-column-id="${ column.id }"
-                                    data-selected-ids="${ Array.from(selectedIds).join(',') }"
+                                    data-column-id="${ this.escapeHtml(column.id) }"
+                                    data-selected-ids="${ this.escapeHtml(Array.from(selectedIds).join(',')) }"
                                     title="${ escapedDisplayText || 'Выбрать значение...' }">
                                 <span class="filter-ref-trigger-text${ escapedDisplayText ? '' : ' filter-ref-trigger-text--placeholder' }">${ escapedDisplayText || 'Выбрать...' }</span>
                                 <span class="filter-ref-trigger-arrow">▼</span>
@@ -380,12 +380,12 @@
                 return `
                     <td>
                         <div class="filter-cell-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ column.id }">
+                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                 ${ currentFilter.type }
                             </span>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-date-picker"
-                                   data-column-id="${ column.id }"
+                                   data-column-id="${ this.escapeHtml(column.id) }"
                                    data-is-datetime="${ isDateTime ? '1' : '0' }"
                                    value="${ html5Value }">
                         </div>
@@ -413,12 +413,12 @@
                 return `
                     <td>
                         <div class="filter-cell-wrapper filter-range-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ column.id }">
+                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                 ${ currentFilter.type }
                             </span>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-range-input"
-                                   data-column-id="${ column.id }"
+                                   data-column-id="${ this.escapeHtml(column.id) }"
                                    data-range-part="from"${ dtAttr }
                                    value="${ escAttr(fromVal) }"
                                    placeholder="от"
@@ -426,7 +426,7 @@
                             <span class="filter-range-sep">—</span>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-range-input"
-                                   data-column-id="${ column.id }"
+                                   data-column-id="${ this.escapeHtml(column.id) }"
                                    data-range-part="to"${ dtAttr }
                                    value="${ escAttr(toVal) }"
                                    placeholder="до"
@@ -439,12 +439,12 @@
             return `
                 <td>
                     <div class="filter-cell-wrapper">
-                        <span class="filter-icon-inside" data-column-id="${ column.id }">
+                        <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                             ${ currentFilter.type }
                         </span>
                         <input type="text"
                                class="filter-input-with-icon"
-                               data-column-id="${ column.id }"
+                               data-column-id="${ this.escapeHtml(column.id) }"
                                value="${ this.escapeHtml(displayValue) }"
                                placeholder="${ placeholder }"
                                autocomplete="off">

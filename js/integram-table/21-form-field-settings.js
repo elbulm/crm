@@ -1,4 +1,6 @@
         openFormFieldSettings(typeId, metadata) {
+            typeId = this.normalizeNumericId(typeId);
+            if (!typeId) return;
             const overlay = document.createElement('div');
             overlay.className = 'form-field-settings-overlay';
 
@@ -37,7 +39,8 @@
             sortedReqs.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
                 const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-                const fieldId = req.id;
+                const fieldId = this.normalizeNumericId(req.id);
+                if (!fieldId) return;
                 const isChecked = visibleFields[fieldId] !== false;
 
                 modalHtml += `

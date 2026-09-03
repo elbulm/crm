@@ -21,10 +21,10 @@
                         const isSelected = this.groupingColumns.includes(col.id);
                         const order = isSelected ? this.groupingColumns.indexOf(col.id) + 1 : '';
                         return `
-                            <div class="column-settings-item grouping-column-item" data-column-id="${ col.id }">
+                            <div class="column-settings-item grouping-column-item" data-column-id="${ this.escapeHtml(col.id) }">
                                 <label>
                                     <input type="checkbox"
-                                           data-column-id="${ col.id }"
+                                           data-column-id="${ this.escapeHtml(col.id) }"
                                            ${ isSelected ? 'checked' : '' }>
                                     <span class="grouping-order-badge" style="${ isSelected ? '' : 'display: none;' }">${ order }</span>
                                     ${ this.escapeHtml(col.name) }

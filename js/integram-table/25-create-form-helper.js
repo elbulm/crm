@@ -351,7 +351,7 @@ class IntegramCreateFormHelper {
         // Render the form
         const reqs = metadata.reqs || [];
         const recordReqs = recordData && recordData.reqs ? recordData.reqs : {};
-        const regularFields = reqs.filter(req => !req.arr_id);
+        const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
         // Build attributes form HTML
         let attributesHtml = this.renderAttributesForm(metadata, recordData, regularFields, recordReqs, fieldValues);
@@ -384,7 +384,7 @@ class IntegramCreateFormHelper {
         document.body.appendChild(modal);
 
         // Load reference options for dropdowns
-        this.loadReferenceOptions(metadata.reqs, modal, fieldValues);
+        this.loadReferenceOptions(regularFields, modal, fieldValues);
 
         // Load GRANT and REPORT_COLUMN dropdown options (issue #577)
         this.loadGrantAndReportColumnOptions(modal);
@@ -522,7 +522,7 @@ class IntegramCreateFormHelper {
             if (req.ref_id && isMulti) {
                 const currentValue = reqValue || '';
                 html += `
-                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
+                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
                         <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                             <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                 <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -552,7 +552,7 @@ class IntegramCreateFormHelper {
             else if (req.ref_id) {
                 const currentValue = reqValue || '';
                 html += `
-                    <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}">
+                    <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}">
                         <div class="inline-editor-reference form-ref-editor-box">
                             <div class="inline-editor-reference-header">
                                 <input type="text"
@@ -940,7 +940,7 @@ class IntegramCreateFormHelper {
                 } else {
                     dropdown.innerHTML = filtered.map(([id, text]) => {
                         const et = self.escapeHtml(self.decodeHtmlEntities(text));
-                        return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                        return `<div class="inline-editor-reference-option" data-id="${self.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                     }).join('');
                 }
             };
@@ -1359,7 +1359,7 @@ class IntegramCreateFormHelper {
         // Render the form
         const reqs = metadata.reqs || [];
         const recordReqs = recordData && recordData.reqs ? recordData.reqs : {};
-        const regularFields = reqs.filter(req => !req.arr_id);
+        const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
         // Separate subordinate tables (issue #837)
         const subordinateTables = reqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
@@ -1440,7 +1440,7 @@ class IntegramCreateFormHelper {
         }
 
         // Load reference options for dropdowns
-        this.loadReferenceOptions(metadata.reqs, modal, {});
+        this.loadReferenceOptions(regularFields, modal, {});
 
         // Load GRANT and REPORT_COLUMN dropdown options
         this.loadGrantAndReportColumnOptions(modal);
@@ -1593,6 +1593,8 @@ class IntegramCreateFormHelper {
      * Uses globalMetadata from IntegramTable instances if available to avoid redundant requests (issue #1302).
      */
     async fetchMetadataStandalone(typeId) {
+        typeId = this.normalizeNumericId(typeId);
+        if (!typeId) throw new Error('Некорректный идентификатор типа');
         if (this.metadataCache[typeId]) {
             return this.metadataCache[typeId];
         }
@@ -2051,6 +2053,8 @@ class IntegramCreateFormHelper {
      * Open form field settings modal (issue #837).
      */
     openFormFieldSettingsStandalone(typeId, metadata) {
+        typeId = this.normalizeNumericId(typeId);
+        if (!typeId) return;
         const overlay = document.createElement('div');
         overlay.className = 'form-field-settings-overlay';
 
@@ -2088,7 +2092,8 @@ class IntegramCreateFormHelper {
             if (req.arr_id) return; // Skip subordinate tables
             const attrs = this.parseAttrs(req.attrs);
             const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-            const fieldId = req.id;
+            const fieldId = this.normalizeNumericId(req.id);
+            if (!fieldId) return;
             const isChecked = visibleFields[fieldId] !== false;
 
             modalHtml += `
@@ -2357,7 +2362,7 @@ class IntegramCreateFormHelper {
                 // Multi-select reference field (issue #1136)
                 const currentValue = fieldValue || '';
                 fieldHtml = `
-                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
+                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
                         <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                             <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                 <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -2386,7 +2391,7 @@ class IntegramCreateFormHelper {
                 // Single-select reference field (searchable dropdown) (issue #1136)
                 const currentValue = fieldValue || '';
                 fieldHtml = `
-                    <div class="form-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}">
+                    <div class="form-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}">
                         <div class="inline-editor-reference form-ref-editor-box">
                             <div class="inline-editor-reference-header">
                                 <input type="text"

@@ -92,7 +92,7 @@
                     const isSelected = selSet.has(String(id));
                     const escapedText = String(this.formatReferenceOptionLabel(text, refColumn)).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     return `
-                        <label class="filter-ref-option" data-id="${id}">
+                        <label class="filter-ref-option" data-id="${this.escapeHtml(id)}">
                             <input type="checkbox" value="${id}" ${isSelected ? 'checked' : ''}>
                             <span class="filter-ref-option-text">${escapedText}</span>
                         </label>

@@ -2435,12 +2435,12 @@ class IntegramTable{
                     return `
                         <td>
                             <div class="filter-cell-wrapper">
-                                <span class="filter-icon-inside" data-column-id="${ column.id }">
+                                <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                     ${ currentFilter.type }
                                 </span>
                                 <input type="text"
                                        class="filter-input-with-icon filter-ref-text-input"
-                                       data-column-id="${ column.id }"
+                                       data-column-id="${ this.escapeHtml(column.id) }"
                                        value="${ this.escapeHtml(displayValue) }"
                                        placeholder="${ placeholder }"
                                        autocomplete="off">
@@ -2488,13 +2488,13 @@ class IntegramTable{
                 return `
                     <td>
                         <div class="filter-cell-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ column.id }">
+                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                 ${ currentFilter.type }
                             </span>
                             <button type="button"
                                     class="filter-ref-trigger"
-                                    data-column-id="${ column.id }"
-                                    data-selected-ids="${ Array.from(selectedIds).join(',') }"
+                                    data-column-id="${ this.escapeHtml(column.id) }"
+                                    data-selected-ids="${ this.escapeHtml(Array.from(selectedIds).join(',')) }"
                                     title="${ escapedDisplayText || 'Выбрать значение...' }">
                                 <span class="filter-ref-trigger-text${ escapedDisplayText ? '' : ' filter-ref-trigger-text--placeholder' }">${ escapedDisplayText || 'Выбрать...' }</span>
                                 <span class="filter-ref-trigger-arrow">▼</span>
@@ -2515,12 +2515,12 @@ class IntegramTable{
                 return `
                     <td>
                         <div class="filter-cell-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ column.id }">
+                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                 ${ currentFilter.type }
                             </span>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-date-picker"
-                                   data-column-id="${ column.id }"
+                                   data-column-id="${ this.escapeHtml(column.id) }"
                                    data-is-datetime="${ isDateTime ? '1' : '0' }"
                                    value="${ html5Value }">
                         </div>
@@ -2548,12 +2548,12 @@ class IntegramTable{
                 return `
                     <td>
                         <div class="filter-cell-wrapper filter-range-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ column.id }">
+                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                                 ${ currentFilter.type }
                             </span>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-range-input"
-                                   data-column-id="${ column.id }"
+                                   data-column-id="${ this.escapeHtml(column.id) }"
                                    data-range-part="from"${ dtAttr }
                                    value="${ escAttr(fromVal) }"
                                    placeholder="от"
@@ -2561,7 +2561,7 @@ class IntegramTable{
                             <span class="filter-range-sep">—</span>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-range-input"
-                                   data-column-id="${ column.id }"
+                                   data-column-id="${ this.escapeHtml(column.id) }"
                                    data-range-part="to"${ dtAttr }
                                    value="${ escAttr(toVal) }"
                                    placeholder="до"
@@ -2574,12 +2574,12 @@ class IntegramTable{
             return `
                 <td>
                     <div class="filter-cell-wrapper">
-                        <span class="filter-icon-inside" data-column-id="${ column.id }">
+                        <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
                             ${ currentFilter.type }
                         </span>
                         <input type="text"
                                class="filter-input-with-icon"
-                               data-column-id="${ column.id }"
+                               data-column-id="${ this.escapeHtml(column.id) }"
                                value="${ this.escapeHtml(displayValue) }"
                                placeholder="${ placeholder }"
                                autocomplete="off">
@@ -3357,7 +3357,7 @@ class IntegramTable{
                             : '';
 
                         // Render the group cell with special styling
-                        rowsHtml += `<td class="group-cell"${ rowspan } data-group-column="${ groupCell.colId }">`;
+                        rowsHtml += `<td class="group-cell"${ rowspan } data-group-column="${ this.escapeHtml(groupCell.colId) }">`;
                         rowsHtml += `<span class="group-cell-content">${ this.escapeHtml(String(cellValue || '')) }</span>`;
                         rowsHtml += addButtonHtml;
                         rowsHtml += `</td>`;
@@ -5750,7 +5750,7 @@ class IntegramTable{
                     const id = String(rec.i);
                     const text = (rec.r && rec.r[0] != null) ? String(rec.r[0]) : `#${ id }`;
                     const escaped = this.escapeHtml(text);
-                    return `<div class="inline-editor-reference-option" data-id="${ id }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                    return `<div class="inline-editor-reference-option" data-id="${ this.escapeHtml(id) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                 }).join('');
             };
 
@@ -5770,7 +5770,7 @@ class IntegramTable{
                     }
                     target.innerHTML = entries.map(([tId, tName]) => {
                         const escaped = this.escapeHtml(String(tName));
-                        return `<div class="inline-editor-reference-option inline-editor-any-ref-table-option" data-table-id="${ tId }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                        return `<div class="inline-editor-reference-option inline-editor-any-ref-table-option" data-table-id="${ this.escapeHtml(tId) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                     }).join('');
                     target.querySelectorAll('.inline-editor-any-ref-table-option').forEach(opt => {
                         opt.addEventListener('click', async (e) => {
@@ -6062,7 +6062,7 @@ class IntegramTable{
                     const optionsHtml = availableOptions.length > 0
                         ? availableOptions.map(([id, text]) => {
                             const escapedText = this.escapeHtml(this.decodeHtmlEntities(text));
-                            return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
+                            return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
                         }).join('')
                         : '<div class="inline-editor-reference-empty">Нет доступных значений</div>';
 
@@ -6151,7 +6151,7 @@ class IntegramTable{
                                     dropdown.innerHTML = serverFiltered.length > 0
                                         ? serverFiltered.map(([id, text]) => {
                                             const et = this.escapeHtml(this.decodeHtmlEntities(text));
-                                            return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                                            return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                                         }).join('')
                                         : '<div class="inline-editor-reference-empty">Нет доступных значений</div>';
                                 } catch (err) {
@@ -6161,7 +6161,7 @@ class IntegramTable{
                                 dropdown.innerHTML = filtered.length > 0
                                     ? filtered.map(([id, text]) => {
                                         const et = this.escapeHtml(this.decodeHtmlEntities(text));
-                                        return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                                        return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                                     }).join('')
                                     : '<div class="inline-editor-reference-empty">Нет доступных значений</div>';
                             }
@@ -6336,7 +6336,7 @@ class IntegramTable{
                 // Issue #3454: справочник типа DATETIME → метку показываем датой, не штампом.
                 const decodedText = this.formatReferenceOptionLabel(this.decodeHtmlEntities(text), column);
                 const escapedText = this.escapeHtml(decodedText);
-                return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
+                return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
             }).join('');
         }
 
@@ -6502,7 +6502,7 @@ class IntegramTable{
 
             // Build attributes form HTML (similar to renderAttributesForm but simplified for create mode)
             const reqs = metadata.reqs || [];
-            const regularFields = reqs.filter(req => !req.arr_id);
+            const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
             // Get current date/datetime for default values
             const now = new Date();
@@ -6571,7 +6571,7 @@ class IntegramTable{
                 if (req.ref_id) {
                     // Render as reference dropdown (same as in edit form)
                     attributesHtml += `
-                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}">
+                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"
@@ -8285,19 +8285,19 @@ class IntegramTable{
                             ? `<span class="col-settings-drag-handle col-settings-fixed" title="Первая колонка зафиксирована">&#128274;</span>`
                             : `<span class="col-settings-drag-handle" title="Перетащите для изменения порядка">&#9776;</span><span class="col-settings-order-num">${ idx }</span>`;
                         return `
-                        <div class="column-settings-item ${ isFirst ? 'column-settings-item--fixed' : '' }" ${ draggableAttr } data-column-id="${ col.id }">
+                        <div class="column-settings-item ${ isFirst ? 'column-settings-item--fixed' : '' }" ${ draggableAttr } data-column-id="${ this.escapeHtml(col.id) }">
                             ${ handleOrLock }
                             ${ this.getColTypeIcon(col) }
                             <label style="flex: 1; margin: 0;">
                                 <input type="checkbox"
-                                       data-column-id="${ col.id }"
+                                       data-column-id="${ this.escapeHtml(col.id) }"
                                        ${ this.visibleColumns.includes(col.id) ? 'checked' : '' }>
                                 ${ displayName }
                                 ${ isRequired ? '<span class="col-required-badge" title="Обязательно к заполнению">*</span>' : '' }
                                 ${ isMulti ? '<span class="col-multi-badge" title="Выбор нескольких значений">&#9641;</span>' : '' }
                                 ${ isKey ? '<span class="col-key-badge" title="Поле входит в проверку уникальности"><i class="pi pi-key" aria-hidden="true"></i></span>' : '' }
                             </label>
-                            <button class="btn-col-edit" data-col-id="${ col.id }" title="Редактировать колонку">
+                            <button class="btn-col-edit" data-col-id="${ this.escapeHtml(col.id) }" title="Редактировать колонку">
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.146 0.146009C12.2408 0.0522494 12.3679 0 12.5005 0C12.6331 0 12.7602 0.0522494 12.854 0.146009L15.854 3.14601C15.9006 3.19245 15.9375 3.24763 15.9627 3.30838C15.9879 3.36912 16.0009 3.43424 16.0009 3.50001C16.0009 3.56578 15.9879 3.6309 15.9627 3.69164C15.9375 3.75239 15.9006 3.80756 15.854 3.85401L5.85399 13.854C5.806 13.9017 5.74885 13.9391 5.68599 13.964L0.685989 15.964C0.595125 16.0004 0.495585 16.0093 0.399709 15.9896C0.303832 15.9699 0.215836 15.9226 0.14663 15.8534C0.0774234 15.7842 0.0300499 15.6962 0.0103825 15.6003C-0.00928499 15.5044 -0.000381488 15.4049 0.0359892 15.314L2.03599 10.314C2.06092 10.2511 2.09834 10.194 2.14599 10.146L12.146 0.146009ZM11.207 2.50001L13.5 4.79301L14.793 3.50001L12.5 1.20701L11.207 2.50001ZM12.793 5.50001L10.5 3.20701L3.99999 9.70701V10H4.49999C4.6326 10 4.75977 10.0527 4.85354 10.1465C4.94731 10.2402 4.99999 10.3674 4.99999 10.5V11H5.49999C5.6326 11 5.75977 11.0527 5.85354 11.1465C5.94731 11.2402 5.99999 11.3674 5.99999 11.5V12H6.29299L12.793 5.50001ZM3.03199 10.675L2.92599 10.781L1.39799 14.602L5.21899 13.074L5.32499 12.968C5.22961 12.9324 5.14738 12.8685 5.0893 12.7848C5.03123 12.7012 5.00007 12.6018 4.99999 12.5V12H4.49999C4.36738 12 4.2402 11.9473 4.14644 11.8536C4.05267 11.7598 3.99999 11.6326 3.99999 11.5V11H3.49999C3.39817 10.9999 3.2988 10.9688 3.21517 10.9107C3.13153 10.8526 3.06763 10.7704 3.03199 10.675Z" fill="currentColor"/></svg>
                             </button>
                         </div>`;
@@ -9566,7 +9566,8 @@ class IntegramTable{
 
                     if (result.success) {
                         // Add column to the table's internal state first so getColTypeIcon can use it
-                        const newColumnId = String(result.columnId);
+                        const newColumnId = this.normalizeNumericId(result.columnId);
+                        if (!newColumnId) throw new Error('Сервер вернул некорректный ID колонки');
                         const isFreeLink = Number(baseTypeId) === 1;
                         let newCol = null;
                         try {
@@ -10250,10 +10251,10 @@ class IntegramTable{
                         const isSelected = this.groupingColumns.includes(col.id);
                         const order = isSelected ? this.groupingColumns.indexOf(col.id) + 1 : '';
                         return `
-                            <div class="column-settings-item grouping-column-item" data-column-id="${ col.id }">
+                            <div class="column-settings-item grouping-column-item" data-column-id="${ this.escapeHtml(col.id) }">
                                 <label>
                                     <input type="checkbox"
-                                           data-column-id="${ col.id }"
+                                           data-column-id="${ this.escapeHtml(col.id) }"
                                            ${ isSelected ? 'checked' : '' }>
                                     <span class="grouping-order-badge" style="${ isSelected ? '' : 'display: none;' }">${ order }</span>
                                     ${ this.escapeHtml(col.name) }
@@ -10826,7 +10827,8 @@ class IntegramTable{
 
                 // Check for FR_ prefix
                 if (key.startsWith('FR_')) {
-                    const colId = key.substring(3);  // Remove 'FR_' prefix
+                    const colId = this.normalizeNumericId(key.substring(3));  // Remove 'FR_' prefix
+                    if (!colId) continue;
                     const parsed = this.parseFilterValue(value);
                     urlFilters[colId] = {
                         type: parsed.type,
@@ -10842,7 +10844,8 @@ class IntegramTable{
                 // Check for F_ prefix (alternative filter format) - issue #549
                 // Note: F_U is excluded above as it's used for parentId
                 else if (key.startsWith('F_')) {
-                    const colId = key.substring(2);  // Remove 'F_' prefix
+                    const colId = this.normalizeNumericId(key.substring(2));  // Remove 'F_' prefix
+                    if (!colId) continue;
                     const parsed = this.parseFilterValue(value);
                     urlFilters[colId] = {
                         type: parsed.type,
@@ -10857,7 +10860,8 @@ class IntegramTable{
                 }
                 // Check for TO_ prefix (range filter second part)
                 else if (key.startsWith('TO_')) {
-                    const colId = key.substring(3);  // Remove 'TO_' prefix
+                    const colId = this.normalizeNumericId(key.substring(3));  // Remove 'TO_' prefix
+                    if (!colId) continue;
                     // If we already have a FR_ or F_ for this column, combine into range
                     if (urlFilters[colId]) {
                         urlFilters[colId].type = '...';
@@ -11645,6 +11649,8 @@ class IntegramTable{
         }
 
         async fetchMetadata(typeId) {
+            typeId = this.normalizeNumericId(typeId);
+            if (!typeId) throw new Error('Некорректный идентификатор типа');
             // Use globalMetadata if available - it already contains metadata for all tables (issue #779)
             if (this.globalMetadata) {
                 const cachedItem = this.globalMetadata.find(item => item.id === typeId || item.id === Number(typeId));
@@ -11800,6 +11806,10 @@ class IntegramTable{
         }
 
         async fetchReferenceOptions(requisiteId, recordId = 0, searchQuery = '', extraParams = {}, attrs = '') {
+            requisiteId = this.normalizeNumericId(requisiteId);
+            if (!requisiteId) return [];
+            const normalizedRecordId = this.normalizeNumericId(recordId);
+            recordId = normalizedRecordId && normalizedRecordId !== '0' ? normalizedRecordId : 0;
             const apiBase = this.getApiBase();
             // Determine whether to include id parameter: only when attrs contains a query (square bracket expression)
             const hasQuery = /\[.+\]/.test(attrs || '');
@@ -12034,7 +12044,7 @@ class IntegramTable{
                     const isSelected = selSet.has(String(id));
                     const escapedText = String(this.formatReferenceOptionLabel(text, refColumn)).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     return `
-                        <label class="filter-ref-option" data-id="${id}">
+                        <label class="filter-ref-option" data-id="${this.escapeHtml(id)}">
                             <input type="checkbox" value="${id}" ${isSelected ? 'checked' : ''}>
                             <span class="filter-ref-option-text">${escapedText}</span>
                         </label>
@@ -12618,7 +12628,7 @@ class IntegramTable{
                 return orderA - orderB;
             });
 
-            const regularFields = sortedReqs.filter(req => !req.arr_id);
+            const regularFields = sortedReqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
             const subordinateTables = sortedReqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
 
             // Build tabs HTML
@@ -12738,7 +12748,7 @@ class IntegramTable{
             }
 
             // Load reference options for dropdowns (scoped to this modal)
-            this.loadReferenceOptions(metadata.reqs, recordId || 0, modal);
+            this.loadReferenceOptions(regularFields, recordId || 0, modal);
 
             // Load GRANT and REPORT_COLUMN dropdown options (issue #577)
             this.loadGrantAndReportColumnOptions(modal);
@@ -13047,7 +13057,7 @@ class IntegramTable{
                 else if (req.ref_id && isMulti) {
                     const currentValue = reqValue || '';
                     html += `
-                        <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ req.orig || req.ref_id }" data-ref-base-type="${ req.type }" data-multi="1" data-current-value="${ this.escapeHtml(currentValue) }">
+                        <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ this.normalizeNumericId(req.orig || req.ref_id) }" data-ref-base-type="${ this.escapeHtml(req.type) }" data-multi="1" data-current-value="${ this.escapeHtml(currentValue) }">
                             <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                                 <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                     <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -13077,7 +13087,7 @@ class IntegramTable{
                 else if (req.ref_id) {
                     const currentValue = reqValue || '';
                     html += `
-                        <div class="form-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ req.orig || req.ref_id }" data-ref-base-type="${ req.type }">
+                        <div class="form-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ this.normalizeNumericId(req.orig || req.ref_id) }" data-ref-base-type="${ this.escapeHtml(req.type) }">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"
@@ -14594,7 +14604,7 @@ class IntegramTable{
 
             // Build form for regular fields only (no nested subordinate tables in create mode)
             const reqs = metadata.reqs || [];
-            const regularFields = reqs.filter(req => !req.arr_id);
+            const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
             // Determine the type of the main (first column) field
             const mainFieldType = this.normalizeFormat(metadata.type);
@@ -14667,7 +14677,7 @@ class IntegramTable{
                 // Multi-select reference field (issue #1772)
                 if (req.ref_id && isMulti) {
                     formHtml += `
-                        <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ req.orig || req.ref_id }" data-ref-base-type="${ req.type }" data-multi="1" data-current-value="">
+                        <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ this.normalizeNumericId(req.orig || req.ref_id) }" data-ref-base-type="${ this.escapeHtml(req.type) }" data-multi="1" data-current-value="">
                             <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                                 <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                     <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -14696,7 +14706,7 @@ class IntegramTable{
                 // Single-select reference field
                 else if (req.ref_id) {
                     formHtml += `
-                        <div class="form-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ req.orig || req.ref_id }" data-ref-base-type="${ req.type }">
+                        <div class="form-reference-editor" data-ref-id="${ req.id }" data-required="${ isRequired }" data-ref-type-id="${ this.normalizeNumericId(req.orig || req.ref_id) }" data-ref-base-type="${ this.escapeHtml(req.type) }">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"
@@ -15499,7 +15509,7 @@ class IntegramTable{
                         const id = String(rec.i);
                         const text = (rec.r && rec.r[0] != null) ? String(rec.r[0]) : `#${ id }`;
                         const escaped = this.escapeHtml(text);
-                        return `<div class="inline-editor-reference-option" data-id="${ id }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                        return `<div class="inline-editor-reference-option" data-id="${ this.escapeHtml(id) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                     }).join('');
                 };
 
@@ -15518,7 +15528,7 @@ class IntegramTable{
                         }
                         dropdown.innerHTML = entries.map(([tId, tName]) => {
                             const escaped = this.escapeHtml(String(tName));
-                            return `<div class="inline-editor-reference-option form-any-ref-table-option" data-table-id="${ tId }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                            return `<div class="inline-editor-reference-option form-any-ref-table-option" data-table-id="${ this.escapeHtml(tId) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                         }).join('');
                         // Table selected: load its records (issue #1807)
                         dropdown.querySelectorAll('.form-any-ref-table-option').forEach(opt => {
@@ -15777,7 +15787,7 @@ class IntegramTable{
                     } else {
                         dropdown.innerHTML = filtered.map(([id, text]) => {
                             const et = this.escapeHtml(this.decodeHtmlEntities(text));
-                            return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                            return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                         }).join('');
                     }
                 };
@@ -16165,7 +16175,7 @@ class IntegramTable{
             const decodedInitialValue = this.decodeHtmlEntities(initialValue);
 
             const reqs = metadata.reqs || [];
-            const regularFields = reqs.filter(req => !req.arr_id);
+            const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
             // Get current date/datetime for default values
             const now = new Date();
@@ -16224,7 +16234,7 @@ class IntegramTable{
                 if (req.ref_id) {
                     // Render as reference dropdown (same as in edit form)
                     attributesHtml += `
-                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}" data-ref-base-type="${req.type}">
+                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}" data-ref-base-type="${this.escapeHtml(req.type)}">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"
@@ -16432,6 +16442,8 @@ class IntegramTable{
 
         // Form field visibility settings
         openFormFieldSettings(typeId, metadata) {
+            typeId = this.normalizeNumericId(typeId);
+            if (!typeId) return;
             const overlay = document.createElement('div');
             overlay.className = 'form-field-settings-overlay';
 
@@ -16470,7 +16482,8 @@ class IntegramTable{
             sortedReqs.forEach(req => {
                 const attrs = this.parseAttrs(req.attrs);
                 const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-                const fieldId = req.id;
+                const fieldId = this.normalizeNumericId(req.id);
+                if (!fieldId) return;
                 const isChecked = visibleFields[fieldId] !== false;
 
                 modalHtml += `
@@ -20147,7 +20160,7 @@ class IntegramCreateFormHelper {
         // Render the form
         const reqs = metadata.reqs || [];
         const recordReqs = recordData && recordData.reqs ? recordData.reqs : {};
-        const regularFields = reqs.filter(req => !req.arr_id);
+        const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
         // Build attributes form HTML
         let attributesHtml = this.renderAttributesForm(metadata, recordData, regularFields, recordReqs, fieldValues);
@@ -20180,7 +20193,7 @@ class IntegramCreateFormHelper {
         document.body.appendChild(modal);
 
         // Load reference options for dropdowns
-        this.loadReferenceOptions(metadata.reqs, modal, fieldValues);
+        this.loadReferenceOptions(regularFields, modal, fieldValues);
 
         // Load GRANT and REPORT_COLUMN dropdown options (issue #577)
         this.loadGrantAndReportColumnOptions(modal);
@@ -20318,7 +20331,7 @@ class IntegramCreateFormHelper {
             if (req.ref_id && isMulti) {
                 const currentValue = reqValue || '';
                 html += `
-                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
+                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
                         <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                             <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                 <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -20348,7 +20361,7 @@ class IntegramCreateFormHelper {
             else if (req.ref_id) {
                 const currentValue = reqValue || '';
                 html += `
-                    <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}">
+                    <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}">
                         <div class="inline-editor-reference form-ref-editor-box">
                             <div class="inline-editor-reference-header">
                                 <input type="text"
@@ -20736,7 +20749,7 @@ class IntegramCreateFormHelper {
                 } else {
                     dropdown.innerHTML = filtered.map(([id, text]) => {
                         const et = self.escapeHtml(self.decodeHtmlEntities(text));
-                        return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                        return `<div class="inline-editor-reference-option" data-id="${self.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                     }).join('');
                 }
             };
@@ -21155,7 +21168,7 @@ class IntegramCreateFormHelper {
         // Render the form
         const reqs = metadata.reqs || [];
         const recordReqs = recordData && recordData.reqs ? recordData.reqs : {};
-        const regularFields = reqs.filter(req => !req.arr_id);
+        const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
         // Separate subordinate tables (issue #837)
         const subordinateTables = reqs.filter(req => this.normalizeNumericId(req.arr_id) && this.normalizeNumericId(req.id));
@@ -21236,7 +21249,7 @@ class IntegramCreateFormHelper {
         }
 
         // Load reference options for dropdowns
-        this.loadReferenceOptions(metadata.reqs, modal, {});
+        this.loadReferenceOptions(regularFields, modal, {});
 
         // Load GRANT and REPORT_COLUMN dropdown options
         this.loadGrantAndReportColumnOptions(modal);
@@ -21389,6 +21402,8 @@ class IntegramCreateFormHelper {
      * Uses globalMetadata from IntegramTable instances if available to avoid redundant requests (issue #1302).
      */
     async fetchMetadataStandalone(typeId) {
+        typeId = this.normalizeNumericId(typeId);
+        if (!typeId) throw new Error('Некорректный идентификатор типа');
         if (this.metadataCache[typeId]) {
             return this.metadataCache[typeId];
         }
@@ -21847,6 +21862,8 @@ class IntegramCreateFormHelper {
      * Open form field settings modal (issue #837).
      */
     openFormFieldSettingsStandalone(typeId, metadata) {
+        typeId = this.normalizeNumericId(typeId);
+        if (!typeId) return;
         const overlay = document.createElement('div');
         overlay.className = 'form-field-settings-overlay';
 
@@ -21884,7 +21901,8 @@ class IntegramCreateFormHelper {
             if (req.arr_id) return; // Skip subordinate tables
             const attrs = this.parseAttrs(req.attrs);
             const fieldName = this.escapeHtml(attrs.alias || req.val || '');
-            const fieldId = req.id;
+            const fieldId = this.normalizeNumericId(req.id);
+            if (!fieldId) return;
             const isChecked = visibleFields[fieldId] !== false;
 
             modalHtml += `
@@ -22153,7 +22171,7 @@ class IntegramCreateFormHelper {
                 // Multi-select reference field (issue #1136)
                 const currentValue = fieldValue || '';
                 fieldHtml = `
-                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
+                    <div class="form-reference-editor form-multi-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}" data-multi="1" data-current-value="${this.escapeHtml(currentValue)}">
                         <div class="inline-editor-reference form-ref-editor-box inline-editor-multi-reference">
                             <div class="multi-ref-tags-container form-multi-ref-tags-container">
                                 <span class="multi-ref-tags-placeholder">Загрузка...</span>
@@ -22182,7 +22200,7 @@ class IntegramCreateFormHelper {
                 // Single-select reference field (searchable dropdown) (issue #1136)
                 const currentValue = fieldValue || '';
                 fieldHtml = `
-                    <div class="form-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}">
+                    <div class="form-reference-editor" data-ref-id="${fieldId}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}">
                         <div class="inline-editor-reference form-ref-editor-box">
                             <div class="inline-editor-reference-header">
                                 <input type="text"

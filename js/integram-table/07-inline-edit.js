@@ -1502,7 +1502,7 @@
                     const id = String(rec.i);
                     const text = (rec.r && rec.r[0] != null) ? String(rec.r[0]) : `#${ id }`;
                     const escaped = this.escapeHtml(text);
-                    return `<div class="inline-editor-reference-option" data-id="${ id }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                    return `<div class="inline-editor-reference-option" data-id="${ this.escapeHtml(id) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                 }).join('');
             };
 
@@ -1522,7 +1522,7 @@
                     }
                     target.innerHTML = entries.map(([tId, tName]) => {
                         const escaped = this.escapeHtml(String(tName));
-                        return `<div class="inline-editor-reference-option inline-editor-any-ref-table-option" data-table-id="${ tId }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
+                        return `<div class="inline-editor-reference-option inline-editor-any-ref-table-option" data-table-id="${ this.escapeHtml(tId) }" data-text="${ escaped }" tabindex="0">${ escaped }</div>`;
                     }).join('');
                     target.querySelectorAll('.inline-editor-any-ref-table-option').forEach(opt => {
                         opt.addEventListener('click', async (e) => {
@@ -1814,7 +1814,7 @@
                     const optionsHtml = availableOptions.length > 0
                         ? availableOptions.map(([id, text]) => {
                             const escapedText = this.escapeHtml(this.decodeHtmlEntities(text));
-                            return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
+                            return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
                         }).join('')
                         : '<div class="inline-editor-reference-empty">Нет доступных значений</div>';
 
@@ -1903,7 +1903,7 @@
                                     dropdown.innerHTML = serverFiltered.length > 0
                                         ? serverFiltered.map(([id, text]) => {
                                             const et = this.escapeHtml(this.decodeHtmlEntities(text));
-                                            return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                                            return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                                         }).join('')
                                         : '<div class="inline-editor-reference-empty">Нет доступных значений</div>';
                                 } catch (err) {
@@ -1913,7 +1913,7 @@
                                 dropdown.innerHTML = filtered.length > 0
                                     ? filtered.map(([id, text]) => {
                                         const et = this.escapeHtml(this.decodeHtmlEntities(text));
-                                        return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${et}" tabindex="0">${et}</div>`;
+                                        return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${et}" tabindex="0">${et}</div>`;
                                     }).join('')
                                     : '<div class="inline-editor-reference-empty">Нет доступных значений</div>';
                             }
@@ -2088,7 +2088,7 @@
                 // Issue #3454: справочник типа DATETIME → метку показываем датой, не штампом.
                 const decodedText = this.formatReferenceOptionLabel(this.decodeHtmlEntities(text), column);
                 const escapedText = this.escapeHtml(decodedText);
-                return `<div class="inline-editor-reference-option" data-id="${id}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
+                return `<div class="inline-editor-reference-option" data-id="${this.escapeHtml(id)}" data-text="${escapedText}" tabindex="0">${escapedText}</div>`;
             }).join('');
         }
 
@@ -2254,7 +2254,7 @@
 
             // Build attributes form HTML (similar to renderAttributesForm but simplified for create mode)
             const reqs = metadata.reqs || [];
-            const regularFields = reqs.filter(req => !req.arr_id);
+            const regularFields = reqs.filter(req => !req.arr_id && this.normalizeNumericId(req.id));
 
             // Get current date/datetime for default values
             const now = new Date();
@@ -2323,7 +2323,7 @@
                 if (req.ref_id) {
                     // Render as reference dropdown (same as in edit form)
                     attributesHtml += `
-                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${req.orig || req.ref_id}">
+                        <div class="form-reference-editor" data-ref-id="${req.id}" data-required="${isRequired}" data-ref-type-id="${this.normalizeNumericId(req.orig || req.ref_id)}">
                             <div class="inline-editor-reference form-ref-editor-box">
                                 <div class="inline-editor-reference-header">
                                     <input type="text"
