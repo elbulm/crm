@@ -287,21 +287,11 @@
                 const url = `${ apiBase }/_m_new/${ arrId }?JSON&up=${ parentRecordId }`;
 
                 try {
-                    const response = await fetch(url, {
+                    const result = await this.fetchJson(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: params.toString()
                     });
-
-                    let result;
-                    const responseText = await response.text();
-
-                    try {
-                        result = JSON.parse(responseText);
-                    } catch (jsonError) {
-                        // Invalid JSON response
-                        throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                    }
 
                     const serverError = this.getServerError(result);
                     if (serverError) {

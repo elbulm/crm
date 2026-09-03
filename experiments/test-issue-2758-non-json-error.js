@@ -144,7 +144,7 @@ const rootDir = path.join(__dirname, '..');
     vm.createContext(sandbox);
     // Append a small shim so the top-level class declaration becomes reachable
     // via the sandbox (vm runs the file as a script, not a module).
-    const exposed = source + '\n;this.IntegramTable = IntegramTable;\n';
+    const exposed = source + '\n;this.IntegramTable = IntegramTable; this.IntegramCreateFormHelper = IntegramCreateFormHelper;\n';
     vm.runInContext(exposed, sandbox, { filename: sourcePath });
 
     const IntegramTable = sandbox.IntegramTable || sandbox.window.IntegramTable;
@@ -199,6 +199,24 @@ const rootDir = path.join(__dirname, '..');
     assert.ok(caught, 'fetchJson should reject non-2xx JSON responses');
     assert.strictEqual(caught.message, 'Invalid filter', 'fetchJson surfaces the JSON error message');
     assert.strictEqual(caught.status, 422, 'fetchJson preserves the HTTP status');
+
+    const StandaloneHelper = sandbox.IntegramCreateFormHelper;
+    const standalone = new StandaloneHelper('/api', '10', '1');
+    nextFetchHandler = () => Promise.resolve({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        text() { return Promise.resolve('{"message":"Maintenance"}'); },
+    });
+    caught = null;
+    try {
+        await standalone.fetchJson('/api/test');
+    } catch (error) {
+        caught = error;
+    }
+    assert.ok(caught, 'standalone forms should reject non-2xx JSON responses');
+    assert.strictEqual(caught.message, 'Maintenance', 'standalone forms surface the server message');
+    assert.strictEqual(caught.status, 503, 'standalone forms preserve the HTTP status');
 
     // --- Part 2: handleLoadDataError keeps filters when columns exist ----
     instance.columns = [

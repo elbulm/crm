@@ -201,7 +201,7 @@
                 if (typeof xsrf !== 'undefined') {
                     params.append('_xsrf', xsrf);
                 }
-                await fetch(`${apiBase}/_d_ord/${columnId}?JSON`, {
+                await this.fetchJson(`${apiBase}/_d_ord/${columnId}?JSON`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()

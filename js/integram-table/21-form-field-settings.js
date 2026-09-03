@@ -950,8 +950,7 @@
                 this.appendPageUrlParams(params);
 
                 const separator = this.options.apiUrl.includes('?') ? '&' : '?';
-                const response = await fetch(`${ this.options.apiUrl }${ separator }${ params }`);
-                const json = await response.json();
+                const json = await this.fetchJson(`${ this.options.apiUrl }${ separator }${ params }`);
 
                 let newRow = null;
 

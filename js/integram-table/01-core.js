@@ -1009,32 +1009,37 @@
          */
         async fetchJson(url, options) {
             const response = await fetch(url, options);
-            const text = await response.text();
-            const trimmed = (text || '').trim();
+            let text = '';
             let parsed = null;
 
-            if (text !== '') {
-                try {
-                    parsed = JSON.parse(text);
-                } catch (parseError) {
-                    const preview = trimmed
-                        ? trimmed.slice(0, 300)
-                        : `HTTP ${ response.status } ${ response.statusText }`.trim();
-                    const error = new Error(preview);
-                    error.isNonJsonResponse = true;
-                    error.status = response.status;
-                    throw error;
+            if (typeof response.text === 'function') {
+                text = await response.text();
+                if (text !== '') {
+                    try {
+                        parsed = JSON.parse(text);
+                    } catch (parseError) {
+                        const preview = text.trim()
+                            ? text.trim().slice(0, 300)
+                            : `HTTP ${ response.status } ${ response.statusText }`.trim();
+                        const error = new Error(preview);
+                        error.isNonJsonResponse = true;
+                        error.status = response.status;
+                        throw error;
+                    }
                 }
+            } else if (typeof response.json === 'function') {
+                // Compatibility for lightweight Response mocks used by embedders/tests.
+                parsed = await response.json();
             }
 
-            if (!response.ok) {
+            if (response.ok === false) {
                 let message = '';
                 if (parsed && typeof parsed === 'object') {
                     message = parsed.error || parsed.message ||
                         (Array.isArray(parsed) && parsed[0] && (parsed[0].error || parsed[0].message)) || '';
                 }
                 if (!message) {
-                    message = trimmed || `HTTP ${ response.status } ${ response.statusText }`.trim();
+                    message = text.trim() || `HTTP ${ response.status } ${ response.statusText }`.trim();
                 }
                 const error = new Error(String(message).slice(0, 300));
                 error.status = response.status;

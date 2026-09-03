@@ -739,8 +739,7 @@
                 const pageSize = this.options.pageSize || 20;
                 const apiBase = this.getApiBase();
                 const dataUrl = `${ apiBase }/object/${ arrId }/?JSON_OBJ&F_U=${ parentRecordId }&LIMIT=0,${ pageSize + 1 }`;
-                const dataResponse = await fetch(dataUrl);
-                const data = await dataResponse.json();
+                const data = await this.fetchJson(dataUrl);
 
                 // Determine if there are more records (issue #1640)
                 const rows = Array.isArray(data) ? data : [];
@@ -851,8 +850,7 @@
                 const apiBase = this.getApiBase();
                 const dataUrl = `${ apiBase }/object/${ arrId }/?JSON_OBJ&F_U=${ parentRecordId }&LIMIT=${ offset },${ pageSize + 1 }`;
 
-                const dataResponse = await fetch(dataUrl);
-                const data = await dataResponse.json();
+                const data = await this.fetchJson(dataUrl);
                 const newRows = Array.isArray(data) ? data : [];
                 const hasMore = newRows.length > pageSize;
                 const pageRows = hasMore ? newRows.slice(0, pageSize) : newRows;
@@ -1601,8 +1599,7 @@
             const dataUrl = `${apiBase}/object/${arrId}/?JSON_OBJ&F_U=${parentRecordId}&LIMIT=0,${pageSize + 1}`;
 
             try {
-                const dataResponse = await fetch(dataUrl);
-                const data = await dataResponse.json();
+                const data = await this.fetchJson(dataUrl);
                 const rows = Array.isArray(data) ? data : [];
                 const hasMore = rows.length > pageSize;
                 const firstPageRows = hasMore ? rows.slice(0, pageSize) : rows;
@@ -1789,19 +1786,11 @@
             }
 
             try {
-                const response = await fetch(`${apiBase}/_m_ord/${movedRecordId}?JSON`, {
+                const result = await this.fetchJson(`${apiBase}/_m_ord/${movedRecordId}?JSON`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-
-                const responseText = await response.text();
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {

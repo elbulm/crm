@@ -401,8 +401,7 @@
                     countUrl = `${ this.options.apiUrl }${ separator }${ params }`;
                 }
 
-                const response = await fetch(countUrl);
-                const result = await response.json();
+                const result = await this.fetchJson(countUrl);
                 this.totalRows = parseInt(result.count, 10);
             } catch (error) {
                 console.error('Error fetching total count:', error);

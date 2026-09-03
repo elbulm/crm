@@ -2042,19 +2042,11 @@
                     ? `${apiBase}/_m_save/${parentInfo.parentRecordId}?JSON`
                     : `${apiBase}/_m_set/${parentInfo.parentRecordId}?JSON`;
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-
-                const responseText = await response.text();
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -2166,23 +2158,13 @@
                     : `${apiBase}/_m_set/${parentInfo.parentRecordId}?JSON`;
 
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: params.toString()
                 });
-
-                let result;
-                const responseText = await response.text();
-
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    // Invalid JSON response
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
 
                 // Check if response has error key anywhere in the JSON
                 const serverError = this.getServerError(result);
@@ -2489,27 +2471,13 @@
             const url = `${apiBase}/_m_new/${typeId}?JSON&up=1`;
 
             try {
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: params.toString()
                 });
-
-                const text = await response.text();
-
-                let result;
-                try {
-                    result = JSON.parse(text);
-                } catch (e) {
-                    // If not JSON, check if it's an error message
-                    if (text.includes('error') || !response.ok) {
-                        throw new Error(text);
-                    }
-                    // Otherwise treat as success
-                    result = { success: true };
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -2647,37 +2615,29 @@
                 }
 
                 // For FILE type with a pending file, send directly as multipart (issue #1310)
-                let response;
+                let requestOptions;
                 if (format === 'FILE' && fileToUpload) {
                     const formData = new FormData();
                     if (typeof xsrf !== 'undefined') {
                         formData.append('_xsrf', xsrf);
                     }
                     formData.append(`t${ colType }`, fileToUpload);
-                    response = await fetch(url, {
+                    requestOptions = {
                         method: 'POST',
                         body: formData
-                    });
+                    };
                 } else {
                     params.append(`t${ colType }`, newValue);
-                    response = await fetch(url, {
+                    requestOptions = {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded'
                         },
                         body: params.toString()
-                    });
+                    };
                 }
 
-                let result;
-                const responseText = await response.text();
-
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    // Invalid JSON response
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
+                const result = await this.fetchJson(url, requestOptions);
 
                 // Check if response has error key anywhere in the JSON
                 const serverError = this.getServerError(result);
@@ -2754,25 +2714,13 @@
                 const parentIdForNew = (this.options.parentId && parseInt(this.options.parentId) > 1) ? this.options.parentId : 1;
                 const url = `${apiBase}/_m_new/${tableTypeId}?JSON&up=${parentIdForNew}`;
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: params.toString()
                 });
-
-                const responseText = await response.text();
-
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (e) {
-                    if (responseText.includes('error') || !response.ok) {
-                        throw new Error(responseText);
-                    }
-                    result = { success: true };
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {

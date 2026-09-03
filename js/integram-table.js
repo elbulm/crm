@@ -1096,32 +1096,37 @@ class IntegramTable{
          */
         async fetchJson(url, options) {
             const response = await fetch(url, options);
-            const text = await response.text();
-            const trimmed = (text || '').trim();
+            let text = '';
             let parsed = null;
 
-            if (text !== '') {
-                try {
-                    parsed = JSON.parse(text);
-                } catch (parseError) {
-                    const preview = trimmed
-                        ? trimmed.slice(0, 300)
-                        : `HTTP ${ response.status } ${ response.statusText }`.trim();
-                    const error = new Error(preview);
-                    error.isNonJsonResponse = true;
-                    error.status = response.status;
-                    throw error;
+            if (typeof response.text === 'function') {
+                text = await response.text();
+                if (text !== '') {
+                    try {
+                        parsed = JSON.parse(text);
+                    } catch (parseError) {
+                        const preview = text.trim()
+                            ? text.trim().slice(0, 300)
+                            : `HTTP ${ response.status } ${ response.statusText }`.trim();
+                        const error = new Error(preview);
+                        error.isNonJsonResponse = true;
+                        error.status = response.status;
+                        throw error;
+                    }
                 }
+            } else if (typeof response.json === 'function') {
+                // Compatibility for lightweight Response mocks used by embedders/tests.
+                parsed = await response.json();
             }
 
-            if (!response.ok) {
+            if (response.ok === false) {
                 let message = '';
                 if (parsed && typeof parsed === 'object') {
                     message = parsed.error || parsed.message ||
                         (Array.isArray(parsed) && parsed[0] && (parsed[0].error || parsed[0].message)) || '';
                 }
                 if (!message) {
-                    message = trimmed || `HTTP ${ response.status } ${ response.statusText }`.trim();
+                    message = text.trim() || `HTTP ${ response.status } ${ response.statusText }`.trim();
                 }
                 const error = new Error(String(message).slice(0, 300));
                 error.status = response.status;
@@ -1938,8 +1943,7 @@ class IntegramTable{
                     countUrl = `${ this.options.apiUrl }${ separator }${ params }`;
                 }
 
-                const response = await fetch(countUrl);
-                const result = await response.json();
+                const result = await this.fetchJson(countUrl);
                 this.totalRows = parseInt(result.count, 10);
             } catch (error) {
                 console.error('Error fetching total count:', error);
@@ -6259,19 +6263,11 @@ class IntegramTable{
                     ? `${apiBase}/_m_save/${parentInfo.parentRecordId}?JSON`
                     : `${apiBase}/_m_set/${parentInfo.parentRecordId}?JSON`;
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-
-                const responseText = await response.text();
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -6383,23 +6379,13 @@ class IntegramTable{
                     : `${apiBase}/_m_set/${parentInfo.parentRecordId}?JSON`;
 
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: params.toString()
                 });
-
-                let result;
-                const responseText = await response.text();
-
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    // Invalid JSON response
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
 
                 // Check if response has error key anywhere in the JSON
                 const serverError = this.getServerError(result);
@@ -6706,27 +6692,13 @@ class IntegramTable{
             const url = `${apiBase}/_m_new/${typeId}?JSON&up=1`;
 
             try {
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: params.toString()
                 });
-
-                const text = await response.text();
-
-                let result;
-                try {
-                    result = JSON.parse(text);
-                } catch (e) {
-                    // If not JSON, check if it's an error message
-                    if (text.includes('error') || !response.ok) {
-                        throw new Error(text);
-                    }
-                    // Otherwise treat as success
-                    result = { success: true };
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -6864,37 +6836,29 @@ class IntegramTable{
                 }
 
                 // For FILE type with a pending file, send directly as multipart (issue #1310)
-                let response;
+                let requestOptions;
                 if (format === 'FILE' && fileToUpload) {
                     const formData = new FormData();
                     if (typeof xsrf !== 'undefined') {
                         formData.append('_xsrf', xsrf);
                     }
                     formData.append(`t${ colType }`, fileToUpload);
-                    response = await fetch(url, {
+                    requestOptions = {
                         method: 'POST',
                         body: formData
-                    });
+                    };
                 } else {
                     params.append(`t${ colType }`, newValue);
-                    response = await fetch(url, {
+                    requestOptions = {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded'
                         },
                         body: params.toString()
-                    });
+                    };
                 }
 
-                let result;
-                const responseText = await response.text();
-
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    // Invalid JSON response
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
+                const result = await this.fetchJson(url, requestOptions);
 
                 // Check if response has error key anywhere in the JSON
                 const serverError = this.getServerError(result);
@@ -6971,25 +6935,13 @@ class IntegramTable{
                 const parentIdForNew = (this.options.parentId && parseInt(this.options.parentId) > 1) ? this.options.parentId : 1;
                 const url = `${apiBase}/_m_new/${tableTypeId}?JSON&up=${parentIdForNew}`;
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: params.toString()
                 });
-
-                const responseText = await response.text();
-
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (e) {
-                    if (responseText.includes('error') || !response.ok) {
-                        throw new Error(responseText);
-                    }
-                    result = { success: true };
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -8185,7 +8137,7 @@ class IntegramTable{
                 if (typeof xsrf !== 'undefined') {
                     params.append('_xsrf', xsrf);
                 }
-                await fetch(`${apiBase}/_d_ord/${columnId}?JSON`, {
+                await this.fetchJson(`${apiBase}/_d_ord/${columnId}?JSON`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
@@ -13287,8 +13239,7 @@ class IntegramTable{
                 const pageSize = this.options.pageSize || 20;
                 const apiBase = this.getApiBase();
                 const dataUrl = `${ apiBase }/object/${ arrId }/?JSON_OBJ&F_U=${ parentRecordId }&LIMIT=0,${ pageSize + 1 }`;
-                const dataResponse = await fetch(dataUrl);
-                const data = await dataResponse.json();
+                const data = await this.fetchJson(dataUrl);
 
                 // Determine if there are more records (issue #1640)
                 const rows = Array.isArray(data) ? data : [];
@@ -13399,8 +13350,7 @@ class IntegramTable{
                 const apiBase = this.getApiBase();
                 const dataUrl = `${ apiBase }/object/${ arrId }/?JSON_OBJ&F_U=${ parentRecordId }&LIMIT=${ offset },${ pageSize + 1 }`;
 
-                const dataResponse = await fetch(dataUrl);
-                const data = await dataResponse.json();
+                const data = await this.fetchJson(dataUrl);
                 const newRows = Array.isArray(data) ? data : [];
                 const hasMore = newRows.length > pageSize;
                 const pageRows = hasMore ? newRows.slice(0, pageSize) : newRows;
@@ -14149,8 +14099,7 @@ class IntegramTable{
             const dataUrl = `${apiBase}/object/${arrId}/?JSON_OBJ&F_U=${parentRecordId}&LIMIT=0,${pageSize + 1}`;
 
             try {
-                const dataResponse = await fetch(dataUrl);
-                const data = await dataResponse.json();
+                const data = await this.fetchJson(dataUrl);
                 const rows = Array.isArray(data) ? data : [];
                 const hasMore = rows.length > pageSize;
                 const firstPageRows = hasMore ? rows.slice(0, pageSize) : rows;
@@ -14337,19 +14286,11 @@ class IntegramTable{
             }
 
             try {
-                const response = await fetch(`${apiBase}/_m_ord/${movedRecordId}?JSON`, {
+                const result = await this.fetchJson(`${apiBase}/_m_ord/${movedRecordId}?JSON`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-
-                const responseText = await response.text();
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-                    throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -14851,21 +14792,11 @@ class IntegramTable{
                 const url = `${ apiBase }/_m_new/${ arrId }?JSON&up=${ parentRecordId }`;
 
                 try {
-                    const response = await fetch(url, {
+                    const result = await this.fetchJson(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: params.toString()
                     });
-
-                    let result;
-                    const responseText = await response.text();
-
-                    try {
-                        result = JSON.parse(responseText);
-                    } catch (jsonError) {
-                        // Invalid JSON response
-                        throw new Error(`Невалидный JSON ответ: ${responseText}`);
-                    }
 
                     const serverError = this.getServerError(result);
                     if (serverError) {
@@ -17390,8 +17321,7 @@ class IntegramTable{
                 this.appendPageUrlParams(params);
 
                 const separator = this.options.apiUrl.includes('?') ? '&' : '?';
-                const response = await fetch(`${ this.options.apiUrl }${ separator }${ params }`);
-                const json = await response.json();
+                const json = await this.fetchJson(`${ this.options.apiUrl }${ separator }${ params }`);
 
                 let newRow = null;
 
@@ -18259,8 +18189,7 @@ class IntegramTable{
             anchorEl.dataset.anyRefResolved = 'pending';
 
             const apiBase = this.getApiBase();
-            fetch(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
-                .then(res => res.json())
+            this.fetchJson(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
                 .then(data => {
                     const objId = data && data.obj;
                     if (!objId) {
@@ -18299,8 +18228,7 @@ class IntegramTable{
             }
             // Fetch and navigate
             const apiBase = this.getApiBase();
-            fetch(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
-                .then(res => res.json())
+            this.fetchJson(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
                 .then(data => {
                     const objId = data && data.obj;
                     if (!objId) return;
@@ -18449,20 +18377,11 @@ class IntegramTable{
                         params.append('_xsrf', xsrf);
                     }
 
-                    const response = await fetch(`${ apiBase }/_m_del/${ record.id }?JSON`, {
+                    const result = await this.fetchJson(`${ apiBase }/_m_del/${ record.id }?JSON`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: params.toString()
                     });
-
-                    const text = await response.text();
-                    let result;
-                    try {
-                        result = JSON.parse(text);
-                    } catch (parseErr) {
-                        // Invalid JSON response - report as warning but don't stop
-                        warnings.push(`#${ record.id } : ${ record.value } : ${ text }`);
-                    }
 
                     // Check for error key in the response
                     if (result) {
@@ -18637,8 +18556,7 @@ class IntegramTable{
             this.appendCurrentFilters(params);
 
             const url = `${ apiBase }/object/${ this.objectTableId }/?JSON_OBJ&${ params }`;
-            const response = await fetch(url);
-            const result = await response.json();
+            const result = await this.fetchJson(url);
             return parseInt(result.count, 10);
         }
 
@@ -18717,14 +18635,11 @@ class IntegramTable{
             };
 
             try {
-                const response = await fetch(`${ apiBase }/object/${ this.objectTableId }/?JSON`, {
+                const result = await this.fetchJson(`${ apiBase }/object/${ this.objectTableId }/?JSON`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-                const responseText = await response.text();
-                let result = null;
-                try { result = JSON.parse(responseText); } catch (e) { result = null; }
 
                 const errMsg = result && (result.error || (Array.isArray(result) && result[0] && result[0].error));
                 if (errMsg) {
@@ -18736,7 +18651,7 @@ class IntegramTable{
                     // Non-JSON / unexpected response (e.g. permission die() text).
                     textEl.textContent = 'Удаление не выполнено';
                     errorsDiv.style.display = 'block';
-                    errorsDiv.innerHTML = `<div class="alert alert-danger">${ this.escapeHtml(responseText.slice(0, 300)) }</div>`;
+                    errorsDiv.innerHTML = '<div class="alert alert-danger">Некорректный ответ сервера</div>';
                     showClose();
                 } else {
                     const deleted = parseInt(result.deleted, 10) || 0;
@@ -19821,6 +19736,48 @@ class IntegramCreateFormHelper {
         this.reportColumnOptionsCache = null;  // Cache for REPORT_COLUMN dropdown options (issue #607)
     }
 
+    async fetchJson(url, options) {
+        const response = await fetch(url, options);
+        let text = '';
+        let parsed = null;
+
+        if (typeof response.text === 'function') {
+            text = await response.text();
+            if (text !== '') {
+                try {
+                    parsed = JSON.parse(text);
+                } catch (parseError) {
+                    const preview = text.trim()
+                        ? text.trim().slice(0, 300)
+                        : `HTTP ${ response.status } ${ response.statusText }`.trim();
+                    const error = new Error(preview);
+                    error.isNonJsonResponse = true;
+                    error.status = response.status;
+                    throw error;
+                }
+            }
+        } else if (typeof response.json === 'function') {
+            parsed = await response.json();
+        }
+
+        if (response.ok === false) {
+            let message = '';
+            if (parsed && typeof parsed === 'object') {
+                message = parsed.error || parsed.message ||
+                    (Array.isArray(parsed) && parsed[0] && (parsed[0].error || parsed[0].message)) || '';
+            }
+            if (!message) {
+                message = text.trim() || `HTTP ${ response.status } ${ response.statusText }`.trim();
+            }
+            const error = new Error(String(message).slice(0, 300));
+            error.status = response.status;
+            error.response = parsed;
+            throw error;
+        }
+
+        return parsed;
+    }
+
     escapeHtml(text) {
         if (text === null || text === undefined) return '';
         return String(text)
@@ -20511,8 +20468,7 @@ class IntegramCreateFormHelper {
 
             try {
                 const url = `${this.apiBase}/_ref_reqs/${req.id}?JSON&LIMIT=50`;
-                const response = await fetch(url);
-                const data = await response.json();
+                const data = await this.fetchJson(url);
 
                 // Parse options - data is an object {id: text, ...}
                 let optionsHtml = '';
@@ -20618,8 +20574,7 @@ class IntegramCreateFormHelper {
 
         try {
             const url = `${this.apiBase}/_ref_reqs/${refReqId}?JSON&LIMIT=50`;
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await this.fetchJson(url);
 
             // Parse options into [id, text] tuples
             const options = Object.entries(data).map(([id, text]) => [id, this.decodeHtmlEntities(text)]);
@@ -21022,20 +20977,11 @@ class IntegramCreateFormHelper {
             // Create the record
             const url = `${this.apiBase}/_m_new/${this.tableTypeId}?JSON&up=${this.parentId || 1}`;
 
-            const response = await fetch(url, {
+            const result = await this.fetchJson(url, {
                 method: 'POST',
                 headers: headers,
                 body: requestBody
             });
-
-            const text = await response.text();
-            let result;
-
-            try {
-                result = JSON.parse(text);
-            } catch (e) {
-                throw new Error(`Invalid response: ${text}`);
-            }
 
             const serverError = this.getServerError(result);
             if (serverError) {
@@ -21326,8 +21272,7 @@ class IntegramCreateFormHelper {
             // Fallback: fetch and render subordinate table data manually
             const metadata = await this.fetchMetadataStandalone(arrId);
             const dataUrl = `${this.apiBase}/object/${arrId}/?JSON_OBJ&F_U=${parentRecordId}`;
-            const dataResponse = await fetch(dataUrl);
-            const data = await dataResponse.json();
+            const data = await this.fetchJson(dataUrl);
 
             this.renderSubordinateTableStandalone(container, metadata, data, arrId, parentRecordId);
 
@@ -21747,20 +21692,11 @@ class IntegramCreateFormHelper {
 
                 const url = `${apiBase}/_m_new/${arrId}?JSON&up=${parentRecordId}`;
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-
-                const text = await response.text();
-                let result;
-                try {
-                    result = JSON.parse(text);
-                } catch (e) {
-                    if (!response.ok) throw new Error(text);
-                    result = { success: true };
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -21781,8 +21717,7 @@ class IntegramCreateFormHelper {
         const dataUrl = `${apiBase}/object/${arrId}/?JSON_OBJ&F_U=${parentRecordId}&LIMIT=0,${pageSize + 1}`;
 
         try {
-            const dataResponse = await fetch(dataUrl);
-            const data = await dataResponse.json();
+            const data = await this.fetchJson(dataUrl);
             const rows = Array.isArray(data) ? data : [];
             const hasMore = rows.length > pageSize;
             const firstPageRows = hasMore ? rows.slice(0, pageSize) : rows;
@@ -22341,20 +22276,11 @@ class IntegramCreateFormHelper {
             // Update the record using _m_save (issue #839)
             const url = `${this.apiBase}/_m_save/${recordId}?JSON`;
 
-            const response = await fetch(url, {
+            const result = await this.fetchJson(url, {
                 method: 'POST',
                 headers: headers,
                 body: requestBody
             });
-
-            const text = await response.text();
-            let result;
-
-            try {
-                result = JSON.parse(text);
-            } catch (e) {
-                throw new Error(`Invalid response: ${text}`);
-            }
 
             const serverError = this.getServerError(result);
             if (serverError) {

@@ -815,8 +815,7 @@
             anchorEl.dataset.anyRefResolved = 'pending';
 
             const apiBase = this.getApiBase();
-            fetch(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
-                .then(res => res.json())
+            this.fetchJson(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
                 .then(data => {
                     const objId = data && data.obj;
                     if (!objId) {
@@ -855,8 +854,7 @@
             }
             // Fetch and navigate
             const apiBase = this.getApiBase();
-            fetch(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
-                .then(res => res.json())
+            this.fetchJson(`${ apiBase }/get_record/${ encodeURIComponent(recordId) }`)
                 .then(data => {
                     const objId = data && data.obj;
                     if (!objId) return;

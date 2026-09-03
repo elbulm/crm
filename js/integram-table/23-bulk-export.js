@@ -126,20 +126,11 @@
                         params.append('_xsrf', xsrf);
                     }
 
-                    const response = await fetch(`${ apiBase }/_m_del/${ record.id }?JSON`, {
+                    const result = await this.fetchJson(`${ apiBase }/_m_del/${ record.id }?JSON`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: params.toString()
                     });
-
-                    const text = await response.text();
-                    let result;
-                    try {
-                        result = JSON.parse(text);
-                    } catch (parseErr) {
-                        // Invalid JSON response - report as warning but don't stop
-                        warnings.push(`#${ record.id } : ${ record.value } : ${ text }`);
-                    }
 
                     // Check for error key in the response
                     if (result) {
@@ -314,8 +305,7 @@
             this.appendCurrentFilters(params);
 
             const url = `${ apiBase }/object/${ this.objectTableId }/?JSON_OBJ&${ params }`;
-            const response = await fetch(url);
-            const result = await response.json();
+            const result = await this.fetchJson(url);
             return parseInt(result.count, 10);
         }
 
@@ -394,14 +384,11 @@
             };
 
             try {
-                const response = await fetch(`${ apiBase }/object/${ this.objectTableId }/?JSON`, {
+                const result = await this.fetchJson(`${ apiBase }/object/${ this.objectTableId }/?JSON`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-                const responseText = await response.text();
-                let result = null;
-                try { result = JSON.parse(responseText); } catch (e) { result = null; }
 
                 const errMsg = result && (result.error || (Array.isArray(result) && result[0] && result[0].error));
                 if (errMsg) {
@@ -413,7 +400,7 @@
                     // Non-JSON / unexpected response (e.g. permission die() text).
                     textEl.textContent = 'Удаление не выполнено';
                     errorsDiv.style.display = 'block';
-                    errorsDiv.innerHTML = `<div class="alert alert-danger">${ this.escapeHtml(responseText.slice(0, 300)) }</div>`;
+                    errorsDiv.innerHTML = '<div class="alert alert-danger">Некорректный ответ сервера</div>';
                     showClose();
                 } else {
                     const deleted = parseInt(result.deleted, 10) || 0;

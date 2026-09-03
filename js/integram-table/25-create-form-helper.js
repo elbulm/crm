@@ -16,6 +16,48 @@ class IntegramCreateFormHelper {
         this.reportColumnOptionsCache = null;  // Cache for REPORT_COLUMN dropdown options (issue #607)
     }
 
+    async fetchJson(url, options) {
+        const response = await fetch(url, options);
+        let text = '';
+        let parsed = null;
+
+        if (typeof response.text === 'function') {
+            text = await response.text();
+            if (text !== '') {
+                try {
+                    parsed = JSON.parse(text);
+                } catch (parseError) {
+                    const preview = text.trim()
+                        ? text.trim().slice(0, 300)
+                        : `HTTP ${ response.status } ${ response.statusText }`.trim();
+                    const error = new Error(preview);
+                    error.isNonJsonResponse = true;
+                    error.status = response.status;
+                    throw error;
+                }
+            }
+        } else if (typeof response.json === 'function') {
+            parsed = await response.json();
+        }
+
+        if (response.ok === false) {
+            let message = '';
+            if (parsed && typeof parsed === 'object') {
+                message = parsed.error || parsed.message ||
+                    (Array.isArray(parsed) && parsed[0] && (parsed[0].error || parsed[0].message)) || '';
+            }
+            if (!message) {
+                message = text.trim() || `HTTP ${ response.status } ${ response.statusText }`.trim();
+            }
+            const error = new Error(String(message).slice(0, 300));
+            error.status = response.status;
+            error.response = parsed;
+            throw error;
+        }
+
+        return parsed;
+    }
+
     escapeHtml(text) {
         if (text === null || text === undefined) return '';
         return String(text)
@@ -706,8 +748,7 @@ class IntegramCreateFormHelper {
 
             try {
                 const url = `${this.apiBase}/_ref_reqs/${req.id}?JSON&LIMIT=50`;
-                const response = await fetch(url);
-                const data = await response.json();
+                const data = await this.fetchJson(url);
 
                 // Parse options - data is an object {id: text, ...}
                 let optionsHtml = '';
@@ -813,8 +854,7 @@ class IntegramCreateFormHelper {
 
         try {
             const url = `${this.apiBase}/_ref_reqs/${refReqId}?JSON&LIMIT=50`;
-            const response = await fetch(url);
-            const data = await response.json();
+            const data = await this.fetchJson(url);
 
             // Parse options into [id, text] tuples
             const options = Object.entries(data).map(([id, text]) => [id, this.decodeHtmlEntities(text)]);
@@ -1217,20 +1257,11 @@ class IntegramCreateFormHelper {
             // Create the record
             const url = `${this.apiBase}/_m_new/${this.tableTypeId}?JSON&up=${this.parentId || 1}`;
 
-            const response = await fetch(url, {
+            const result = await this.fetchJson(url, {
                 method: 'POST',
                 headers: headers,
                 body: requestBody
             });
-
-            const text = await response.text();
-            let result;
-
-            try {
-                result = JSON.parse(text);
-            } catch (e) {
-                throw new Error(`Invalid response: ${text}`);
-            }
 
             const serverError = this.getServerError(result);
             if (serverError) {
@@ -1521,8 +1552,7 @@ class IntegramCreateFormHelper {
             // Fallback: fetch and render subordinate table data manually
             const metadata = await this.fetchMetadataStandalone(arrId);
             const dataUrl = `${this.apiBase}/object/${arrId}/?JSON_OBJ&F_U=${parentRecordId}`;
-            const dataResponse = await fetch(dataUrl);
-            const data = await dataResponse.json();
+            const data = await this.fetchJson(dataUrl);
 
             this.renderSubordinateTableStandalone(container, metadata, data, arrId, parentRecordId);
 
@@ -1942,20 +1972,11 @@ class IntegramCreateFormHelper {
 
                 const url = `${apiBase}/_m_new/${arrId}?JSON&up=${parentRecordId}`;
 
-                const response = await fetch(url, {
+                const result = await this.fetchJson(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: params.toString()
                 });
-
-                const text = await response.text();
-                let result;
-                try {
-                    result = JSON.parse(text);
-                } catch (e) {
-                    if (!response.ok) throw new Error(text);
-                    result = { success: true };
-                }
 
                 const serverError = this.getServerError(result);
                 if (serverError) {
@@ -1976,8 +1997,7 @@ class IntegramCreateFormHelper {
         const dataUrl = `${apiBase}/object/${arrId}/?JSON_OBJ&F_U=${parentRecordId}&LIMIT=0,${pageSize + 1}`;
 
         try {
-            const dataResponse = await fetch(dataUrl);
-            const data = await dataResponse.json();
+            const data = await this.fetchJson(dataUrl);
             const rows = Array.isArray(data) ? data : [];
             const hasMore = rows.length > pageSize;
             const firstPageRows = hasMore ? rows.slice(0, pageSize) : rows;
@@ -2536,20 +2556,11 @@ class IntegramCreateFormHelper {
             // Update the record using _m_save (issue #839)
             const url = `${this.apiBase}/_m_save/${recordId}?JSON`;
 
-            const response = await fetch(url, {
+            const result = await this.fetchJson(url, {
                 method: 'POST',
                 headers: headers,
                 body: requestBody
             });
-
-            const text = await response.text();
-            let result;
-
-            try {
-                result = JSON.parse(text);
-            } catch (e) {
-                throw new Error(`Invalid response: ${text}`);
-            }
 
             const serverError = this.getServerError(result);
             if (serverError) {
