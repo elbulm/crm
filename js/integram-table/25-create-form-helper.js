@@ -58,6 +58,14 @@ class IntegramCreateFormHelper {
         return parsed;
     }
 
+    sanitizeLinkUrl(value) {
+        if (value === null || value === undefined) return '';
+        const url = String(value).trim();
+        const schemeProbe = url.replace(/[\u0000-\u0020\u007f]+/g, '');
+        if (/^(?:javascript|data|vbscript):/i.test(schemeProbe)) return '';
+        if (/^[a-z][a-z0-9+.-]*:/i.test(schemeProbe) && !/^https?:/i.test(schemeProbe)) return '';
+        return url;
+    }
     escapeHtml(text) {
         if (text === null || text === undefined) return '';
         return String(text)
@@ -1333,7 +1341,7 @@ class IntegramCreateFormHelper {
 
         const recordIdHtml = `
             <span class="edit-form-record-id" onclick="navigator.clipboard.writeText('${recordId}').then(() => { this.style.color='#28a745'; setTimeout(() => this.style.color='', 1000); })" title="Скопировать ID" style="cursor:pointer;margin-left:8px;font-size: 0.75rem;color:var(--cards-text-secondary);">#${recordId}</span>
-            <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" style="margin-left:4px;">
+            <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer" style="margin-left:4px;">
                 <i class="pi pi-table"></i>
             </a>
         `;
@@ -1632,7 +1640,7 @@ class IntegramCreateFormHelper {
                     <a href="#" class="subordinate-paste-buffer-btn" title="Вставить из буфера" onclick="event.preventDefault(); event.stopPropagation();">
                         <i class="pi pi-clipboard"></i>
                     </a>
-                    <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank">
+                    <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                         <i class="pi pi-table"></i>
                     </a>
                 </div>
@@ -2411,6 +2419,7 @@ class IntegramCreateFormHelper {
                     }
                 }
 
+                const safeFileHref = this.sanitizeLinkUrl(fileHref);
                 fieldHtml = `
                     <div class="form-file-upload" data-req-id="${fieldId}" data-original-value="${this.escapeHtml(fieldValue)}">
                         <input type="file" class="file-input" id="field-${fieldId}-file" style="display: none;">
@@ -2419,7 +2428,7 @@ class IntegramCreateFormHelper {
                             <button type="button" class="file-select-btn">Выбрать файл</button>
                         </div>
                         <div class="file-preview" style="${hasFile ? 'display: flex;' : 'display: none;'}">
-                            ${fileHref ? `<a href="${this.escapeHtml(fileHref)}" target="_blank" class="file-name file-link">${this.escapeHtml(fileDisplayName)}</a>` : `<span class="file-name">${this.escapeHtml(fileDisplayName)}</span>`}
+                            ${safeFileHref ? `<a href="${this.escapeHtml(safeFileHref)}" target="_blank" rel="noopener noreferrer" class="file-name file-link">${this.escapeHtml(fileDisplayName)}</a>` : `<span class="file-name">${this.escapeHtml(fileDisplayName)}</span>`}
                             <button type="button" class="file-remove-btn" title="Удалить файл"><i class="pi pi-times"></i></button>
                         </div>
                         <input type="hidden" id="field-${fieldId}" name="t${fieldId}" value="${this.escapeHtml(fieldValue)}" ${isRequired ? 'required' : ''} data-file-deleted="false">

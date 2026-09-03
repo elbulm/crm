@@ -63,7 +63,7 @@
 
                 recordIdHtml = `
                     <span class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID">#${recordId}</span>
-                    <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank">
+                    <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                         <i class="pi pi-table"></i>
                     </a>
                 `;
@@ -596,7 +596,7 @@
                     let hasFile = false;
 
                     if (reqValue && reqValue !== '') {
-                        // Check if value contains HTML link: <a target="_blank" href="/path/to/file">filename.ext</a>
+                        // Check if value contains HTML link: <a target="_blank" rel="noopener noreferrer" href="/path/to/file">filename.ext</a>
                         const linkMatch = reqValue.match(/<a[^>]*href=["']([^"']+)["'][^>]*>([^<]+)<\/a>/i);
                         if (linkMatch) {
                             fileHref = linkMatch[1];
@@ -610,6 +610,7 @@
                         }
                     }
 
+                    const safeFileHref = this.sanitizeLinkUrl(fileHref);
                     html += `
                         <div class="form-file-upload" data-req-id="${ req.id }" data-original-value="${ this.escapeHtml(reqValue) }">
                             <input type="file" class="file-input" id="field-${ req.id }-file" style="display: none;">
@@ -618,7 +619,7 @@
                                 <button type="button" class="file-select-btn">Выбрать файл</button>
                             </div>
                             <div class="file-preview" style="${ hasFile ? 'display: flex;' : 'display: none;' }">
-                                ${ fileHref ? `<a href="${ this.escapeHtml(fileHref) }" target="_blank" class="file-name file-link">${ this.escapeHtml(fileName) }</a>` : `<span class="file-name">${ this.escapeHtml(fileName) }</span>` }
+                                ${ safeFileHref ? `<a href="${ this.escapeHtml(safeFileHref) }" target="_blank" rel="noopener noreferrer" class="file-name file-link">${ this.escapeHtml(fileName) }</a>` : `<span class="file-name">${ this.escapeHtml(fileName) }</span>` }
                                 <button type="button" class="file-remove-btn" title="Удалить файл"><i class="pi pi-times"></i></button>
                             </div>
                             <input type="hidden" id="field-${ req.id }" name="t${ req.id }" value="${ this.escapeHtml(reqValue) }" ${ isRequired ? 'required' : '' } data-file-deleted="false">
@@ -912,7 +913,7 @@
                                 const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
                                 const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
                                 td.className = 'subordinate-nested-count';
-                                td.innerHTML = `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>`;
+                                td.innerHTML = `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>`;
                             } else {
                                 let displayValue = this.formatSubordinateCellValue(cellValue, req);
                                 if (searchTerm) {
@@ -1149,7 +1150,7 @@
                         <a href="#" class="subordinate-paste-buffer-btn" title="Вставить из буфера" onclick="event.preventDefault(); event.stopPropagation();">
                             <i class="pi pi-clipboard"></i>
                         </a>
-                        <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank">
+                        <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                             <i class="pi pi-table"></i>
                         </a>
                     </div>
@@ -1205,7 +1206,7 @@
                             const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
                             // Issue #737: Use the same icon styling as .subordinate-link-cell in main table
                             const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
-                            html += `<td class="subordinate-nested-count"><a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a></td>`;
+                            html += `<td class="subordinate-nested-count"><a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a></td>`;
                         } else {
                             let displayValue = this.formatSubordinateCellValue(cellValue, req);
                             if (searchTerm) {

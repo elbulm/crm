@@ -2309,7 +2309,7 @@ class IntegramTable{
                                         const refTypeId = col.ref;
                                         const refIconHtml = refTypeId ? (() => {
                                             const dbName = window.db || window.location.pathname.split('/')[1];
-                                            return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
+                                            return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                                         })() : '';
                                         return `
                                             <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }>
@@ -2846,7 +2846,7 @@ class IntegramTable{
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
                     const subordinateTableUrl = `/${dbName}/table/${column.arr_id}?F_U=${recordId}`;
                     // Issue #733: Split into two links - table icon opens new window, count opens modal
-                    displayValue = `<a href="${subordinateTableUrl}" class="subordinate-table-icon-link" target="${column.arr_id}" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${ instanceName }.openSubordinateTableFromCell(event, ${ column.arr_id }, ${ recordId }); return false;" title="Посмотреть подчиненную таблицу">(${ count })</a>`;
+                    displayValue = `<a href="${subordinateTableUrl}" class="subordinate-table-icon-link" target="${column.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${ instanceName }.openSubordinateTableFromCell(event, ${ column.arr_id }, ${ recordId }); return false;" title="Посмотреть подчиненную таблицу">(${ count })</a>`;
                 } else {
                     displayValue = `<span class="table-icon"><i class="pi pi-table"></i></span><span class="subordinate-count">(${ count })</span>`;
                 }
@@ -3531,7 +3531,7 @@ class IntegramTable{
                         const refTypeId = col.ref_id;
                         const refIconHtml = refTypeId ? (() => {
                             const dbName = window.db || window.location.pathname.split('/')[1];
-                            return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
+                            return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                         })() : '';
                         rows[depth].push(`
                             <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
@@ -3595,7 +3595,7 @@ class IntegramTable{
                 const refTypeId = col.ref_id;
                 const refIconHtml = refTypeId ? (() => {
                     const dbName = window.db || window.location.pathname.split('/')[1];
-                    return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
+                    return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                 })() : '';
 
                 return `
@@ -8521,7 +8521,7 @@ class IntegramTable{
             const dbName = window.location.pathname.split('/')[1];
             const refTableUrl = refTypeId ? `/${ dbName }/table/${ refTypeId }` : '#';
             const nameFieldHtml = isRef
-                ? `<a href="${ this.escapeHtml(refTableUrl) }" target="${ refTypeId }" style="color: grey;">${ this.escapeHtml(currentName) }</a>`
+                ? `<a href="${ this.escapeHtml(refTableUrl) }" target="${ refTypeId }" rel="noopener noreferrer" style="color: grey;">${ this.escapeHtml(currentName) }</a>`
                 : `<input type="text" id="col-edit-name-${instanceName}" class="form-control form-control-sm col-edit-input" value="${ this.escapeHtml(currentName) }" placeholder="Введите название колонки" autocomplete="off">`;
             const uniqueKeyTitle = 'Система контролирует уникальность комбинации первой колонки и всех ключей';
 
@@ -8786,7 +8786,7 @@ class IntegramTable{
                     const refTypeId = col.orig || col.ref_id;
                     if (refTypeId) {
                         const dbName = window.location.pathname.split('/')[1];
-                        window.open(`/${dbName}/object/${refTypeId}`, '_blank');
+                        window.open(`/${dbName}/object/${refTypeId}`, '_blank', 'noopener,noreferrer');
                     }
                 });
             }
@@ -12582,7 +12582,7 @@ class IntegramTable{
 
                 recordIdHtml = `
                     <span class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID">#${recordId}</span>
-                    <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank">
+                    <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                         <i class="pi pi-table"></i>
                     </a>
                 `;
@@ -13115,7 +13115,7 @@ class IntegramTable{
                     let hasFile = false;
 
                     if (reqValue && reqValue !== '') {
-                        // Check if value contains HTML link: <a target="_blank" href="/path/to/file">filename.ext</a>
+                        // Check if value contains HTML link: <a target="_blank" rel="noopener noreferrer" href="/path/to/file">filename.ext</a>
                         const linkMatch = reqValue.match(/<a[^>]*href=["']([^"']+)["'][^>]*>([^<]+)<\/a>/i);
                         if (linkMatch) {
                             fileHref = linkMatch[1];
@@ -13129,6 +13129,7 @@ class IntegramTable{
                         }
                     }
 
+                    const safeFileHref = this.sanitizeLinkUrl(fileHref);
                     html += `
                         <div class="form-file-upload" data-req-id="${ req.id }" data-original-value="${ this.escapeHtml(reqValue) }">
                             <input type="file" class="file-input" id="field-${ req.id }-file" style="display: none;">
@@ -13137,7 +13138,7 @@ class IntegramTable{
                                 <button type="button" class="file-select-btn">Выбрать файл</button>
                             </div>
                             <div class="file-preview" style="${ hasFile ? 'display: flex;' : 'display: none;' }">
-                                ${ fileHref ? `<a href="${ this.escapeHtml(fileHref) }" target="_blank" class="file-name file-link">${ this.escapeHtml(fileName) }</a>` : `<span class="file-name">${ this.escapeHtml(fileName) }</span>` }
+                                ${ safeFileHref ? `<a href="${ this.escapeHtml(safeFileHref) }" target="_blank" rel="noopener noreferrer" class="file-name file-link">${ this.escapeHtml(fileName) }</a>` : `<span class="file-name">${ this.escapeHtml(fileName) }</span>` }
                                 <button type="button" class="file-remove-btn" title="Удалить файл"><i class="pi pi-times"></i></button>
                             </div>
                             <input type="hidden" id="field-${ req.id }" name="t${ req.id }" value="${ this.escapeHtml(reqValue) }" ${ isRequired ? 'required' : '' } data-file-deleted="false">
@@ -13431,7 +13432,7 @@ class IntegramTable{
                                 const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
                                 const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
                                 td.className = 'subordinate-nested-count';
-                                td.innerHTML = `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>`;
+                                td.innerHTML = `<a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a>`;
                             } else {
                                 let displayValue = this.formatSubordinateCellValue(cellValue, req);
                                 if (searchTerm) {
@@ -13668,7 +13669,7 @@ class IntegramTable{
                         <a href="#" class="subordinate-paste-buffer-btn" title="Вставить из буфера" onclick="event.preventDefault(); event.stopPropagation();">
                             <i class="pi pi-clipboard"></i>
                         </a>
-                        <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank">
+                        <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                             <i class="pi pi-table"></i>
                         </a>
                     </div>
@@ -13724,7 +13725,7 @@ class IntegramTable{
                             const count = typeof cellValue === 'number' ? cellValue : (cellValue || 0);
                             // Issue #737: Use the same icon styling as .subordinate-link-cell in main table
                             const nestedTableUrl = `/${dbName}/table/${req.arr_id}?F_U=${rowId}`;
-                            html += `<td class="subordinate-nested-count"><a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a></td>`;
+                            html += `<td class="subordinate-nested-count"><a href="${nestedTableUrl}" class="subordinate-table-icon-link" target="${req.arr_id}" rel="noopener noreferrer" title="Открыть в новом окне" onclick="event.stopPropagation();"><i class="pi pi-table"></i></a><a href="#" class="subordinate-count-link" onclick="window.${instanceName}.openSubordinateTableFromCell(event, ${req.arr_id}, ${rowId}); return false;" title="Посмотреть подчиненную таблицу">(${count})</a></td>`;
                         } else {
                             let displayValue = this.formatSubordinateCellValue(cellValue, req);
                             if (searchTerm) {
@@ -17617,6 +17618,14 @@ class IntegramTable{
             return result.path || result.file || result.filename;
         }
 
+        sanitizeLinkUrl(value) {
+            if (value === null || value === undefined) return '';
+            const url = String(value).trim();
+            const schemeProbe = url.replace(/[\u0000-\u0020\u007f]+/g, '');
+            if (/^(?:javascript|data|vbscript):/i.test(schemeProbe)) return '';
+            if (/^[a-z][a-z0-9+.-]*:/i.test(schemeProbe) && !/^https?:/i.test(schemeProbe)) return '';
+            return url;
+        }
         escapeHtml(text) {
             if (text === null || text === undefined) return '';
             return String(text).replace(/&/g, '&amp;')
@@ -18026,7 +18035,7 @@ class IntegramTable{
             if (objId) {
                 const editUrl = `${ apiBase }/edit_obj/${ objId }`;
                 linkHtml = `
-                    <a href="${ editUrl }" target="_blank" class="integram-modal-link">
+                    <a href="${ editUrl }" target="_blank" rel="noopener noreferrer" class="integram-modal-link">
                         Открыть найденную запись ↗
                     </a>
                 `;
@@ -19797,6 +19806,14 @@ class IntegramCreateFormHelper {
         return parsed;
     }
 
+    sanitizeLinkUrl(value) {
+        if (value === null || value === undefined) return '';
+        const url = String(value).trim();
+        const schemeProbe = url.replace(/[\u0000-\u0020\u007f]+/g, '');
+        if (/^(?:javascript|data|vbscript):/i.test(schemeProbe)) return '';
+        if (/^[a-z][a-z0-9+.-]*:/i.test(schemeProbe) && !/^https?:/i.test(schemeProbe)) return '';
+        return url;
+    }
     escapeHtml(text) {
         if (text === null || text === undefined) return '';
         return String(text)
@@ -21072,7 +21089,7 @@ class IntegramCreateFormHelper {
 
         const recordIdHtml = `
             <span class="edit-form-record-id" onclick="navigator.clipboard.writeText('${recordId}').then(() => { this.style.color='#28a745'; setTimeout(() => this.style.color='', 1000); })" title="Скопировать ID" style="cursor:pointer;margin-left:8px;font-size: 0.75rem;color:var(--cards-text-secondary);">#${recordId}</span>
-            <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" style="margin-left:4px;">
+            <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer" style="margin-left:4px;">
                 <i class="pi pi-table"></i>
             </a>
         `;
@@ -21371,7 +21388,7 @@ class IntegramCreateFormHelper {
                     <a href="#" class="subordinate-paste-buffer-btn" title="Вставить из буфера" onclick="event.preventDefault(); event.stopPropagation();">
                         <i class="pi pi-clipboard"></i>
                     </a>
-                    <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank">
+                    <a href="${subordinateTableUrl}" class="subordinate-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                         <i class="pi pi-table"></i>
                     </a>
                 </div>
@@ -22150,6 +22167,7 @@ class IntegramCreateFormHelper {
                     }
                 }
 
+                const safeFileHref = this.sanitizeLinkUrl(fileHref);
                 fieldHtml = `
                     <div class="form-file-upload" data-req-id="${fieldId}" data-original-value="${this.escapeHtml(fieldValue)}">
                         <input type="file" class="file-input" id="field-${fieldId}-file" style="display: none;">
@@ -22158,7 +22176,7 @@ class IntegramCreateFormHelper {
                             <button type="button" class="file-select-btn">Выбрать файл</button>
                         </div>
                         <div class="file-preview" style="${hasFile ? 'display: flex;' : 'display: none;'}">
-                            ${fileHref ? `<a href="${this.escapeHtml(fileHref)}" target="_blank" class="file-name file-link">${this.escapeHtml(fileDisplayName)}</a>` : `<span class="file-name">${this.escapeHtml(fileDisplayName)}</span>`}
+                            ${safeFileHref ? `<a href="${this.escapeHtml(safeFileHref)}" target="_blank" rel="noopener noreferrer" class="file-name file-link">${this.escapeHtml(fileDisplayName)}</a>` : `<span class="file-name">${this.escapeHtml(fileDisplayName)}</span>`}
                             <button type="button" class="file-remove-btn" title="Удалить файл"><i class="pi pi-times"></i></button>
                         </div>
                         <input type="hidden" id="field-${fieldId}" name="t${fieldId}" value="${this.escapeHtml(fieldValue)}" ${isRequired ? 'required' : ''} data-file-deleted="false">

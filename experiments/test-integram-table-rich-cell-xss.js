@@ -7,7 +7,14 @@ const path = require('path');
 
 const root = path.join(__dirname, '..', 'js', 'integram-table');
 const renderCellSource = fs.readFileSync(path.join(root, '06-render-cell.js'), 'utf8');
+const formEditSource = fs.readFileSync(path.join(root, '19-form-edit.js'), 'utf8');
+const helperSource = fs.readFileSync(path.join(root, '25-create-form-helper.js'), 'utf8');
 const utilsSource = fs.readFileSync(path.join(root, '22-utils.js'), 'utf8');
+const modularSource = fs.readdirSync(root)
+    .filter(name => name.endsWith('.js'))
+    .sort()
+    .map(name => fs.readFileSync(path.join(root, name), 'utf8'))
+    .join('\n');
 
 function extractMethod(source, name) {
     const marker = '\n        ' + name + '(';
@@ -29,6 +36,7 @@ function extractMethod(source, name) {
 const Host = new Function(
     'class Host {' +
     extractMethod(utilsSource, 'escapeHtml') +
+    extractMethod(utilsSource, 'sanitizeLinkUrl') +
     extractMethod(utilsSource, 'sanitizeCellStyle') +
     extractMethod(utilsSource, 'sanitizeCellHtml') +
     extractMethod(utilsSource, 'parseButtonAction') +
@@ -41,6 +49,17 @@ assert.strictEqual(
     '&lt;img src=x onerror=alert(1)&gt;',
     'HTML sanitizer must fail closed when no DOM parser is available'
 );
+
+assert.strictEqual(host.sanitizeLinkUrl('javascript:alert(1)'), '',
+    'javascript URLs must be rejected');
+assert.strictEqual(host.sanitizeLinkUrl('java\nscript:alert(1)'), '',
+    'control-character-obfuscated javascript URLs must be rejected');
+assert.strictEqual(host.sanitizeLinkUrl('data:text/html,<script>alert(1)</script>'), '',
+    'data URLs must be rejected');
+assert.strictEqual(host.sanitizeLinkUrl('/db/file/report.pdf'), '/db/file/report.pdf',
+    'same-origin relative file URLs remain supported');
+assert.strictEqual(host.sanitizeLinkUrl('https://files.example/report.pdf'), 'https://files.example/report.pdf',
+    'HTTPS file URLs remain supported');
 
 assert.strictEqual(
     host.sanitizeCellStyle('color: red; text-align: center; position: fixed'),
@@ -76,5 +95,11 @@ assert(renderCellSource.includes('value="${ this.escapeHtml(String(val)) }"'),
     'paste preview input values must be fully attribute-escaped');
 assert(!renderCellSource.includes('value="${val.replace(/"/g'),
     'partial quote-only escaping must not be used for paste preview values');
+assert(formEditSource.includes('const safeFileHref = this.sanitizeLinkUrl(fileHref);'),
+    'edit forms must sanitize server-provided file URLs');
+assert(helperSource.includes('const safeFileHref = this.sanitizeLinkUrl(fileHref);'),
+    'standalone edit forms must sanitize server-provided file URLs');
+assert.strictEqual((modularSource.match(/target="_blank"(?!\s+rel="noopener noreferrer")/g) || []).length, 0,
+    'new-tab links must disable opener access');
 
-console.log('PASS rich table cells and paste previews reject executable HTML, CSS and BUTTON values');
+console.log('PASS table HTML, file URLs and new-tab links reject executable or opener-capable content');

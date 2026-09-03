@@ -348,7 +348,7 @@
             const dbName = window.location.pathname.split('/')[1];
             const refTableUrl = refTypeId ? `/${ dbName }/table/${ refTypeId }` : '#';
             const nameFieldHtml = isRef
-                ? `<a href="${ this.escapeHtml(refTableUrl) }" target="${ refTypeId }" style="color: grey;">${ this.escapeHtml(currentName) }</a>`
+                ? `<a href="${ this.escapeHtml(refTableUrl) }" target="${ refTypeId }" rel="noopener noreferrer" style="color: grey;">${ this.escapeHtml(currentName) }</a>`
                 : `<input type="text" id="col-edit-name-${instanceName}" class="form-control form-control-sm col-edit-input" value="${ this.escapeHtml(currentName) }" placeholder="Введите название колонки" autocomplete="off">`;
             const uniqueKeyTitle = 'Система контролирует уникальность комбинации первой колонки и всех ключей';
 
@@ -613,7 +613,7 @@
                     const refTypeId = col.orig || col.ref_id;
                     if (refTypeId) {
                         const dbName = window.location.pathname.split('/')[1];
-                        window.open(`/${dbName}/object/${refTypeId}`, '_blank');
+                        window.open(`/${dbName}/object/${refTypeId}`, '_blank', 'noopener,noreferrer');
                     }
                 });
             }

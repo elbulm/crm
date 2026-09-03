@@ -224,6 +224,14 @@
             return result.path || result.file || result.filename;
         }
 
+        sanitizeLinkUrl(value) {
+            if (value === null || value === undefined) return '';
+            const url = String(value).trim();
+            const schemeProbe = url.replace(/[\u0000-\u0020\u007f]+/g, '');
+            if (/^(?:javascript|data|vbscript):/i.test(schemeProbe)) return '';
+            if (/^[a-z][a-z0-9+.-]*:/i.test(schemeProbe) && !/^https?:/i.test(schemeProbe)) return '';
+            return url;
+        }
         escapeHtml(text) {
             if (text === null || text === undefined) return '';
             return String(text).replace(/&/g, '&amp;')
@@ -633,7 +641,7 @@
             if (objId) {
                 const editUrl = `${ apiBase }/edit_obj/${ objId }`;
                 linkHtml = `
-                    <a href="${ editUrl }" target="_blank" class="integram-modal-link">
+                    <a href="${ editUrl }" target="_blank" rel="noopener noreferrer" class="integram-modal-link">
                         Открыть найденную запись ↗
                     </a>
                 `;
