@@ -60,6 +60,9 @@ class IntegramTable{
             this.isFetchingTotalCount = false;  // True while re-requesting the total count (issue #2795)
             this.hasMore = true;  // Whether there are more records to load
             this.isLoading = false;  // Prevent multiple simultaneous loads
+            this._loadDataPromise = null;  // Promise for the full active load queue
+            this._loadRequestVersion = 0;  // Invalidates responses superseded by a refresh
+            this._reloadQueued = false;  // Coalesces refreshes requested during an active load
             this.pendingRequests = 0;  // In-flight server requests; drives the toolbar AJAX spinner
             this.filters = {};
             this.columnOrder = [];
@@ -711,29 +714,49 @@ class IntegramTable{
                 append = false;
             }
 
-            // Dedupe concurrent loads. When a load is already running, return its
-            // in-flight promise instead of a no-op so callers that `await this.loadData(...)`
-            // wait for columns/data to be rebuilt. Returning early used to leave
-            // this.columns = [], which produced an empty "Настройки колонок таблицы" form
-            // after deleting and immediately re-creating a column: closeColumnSettings()
-            // fires an un-awaited refresh and the following `await this.loadData(...)`
-            // short-circuited before the columns were rebuilt (issue #2824).
-            // Non-append (refresh) calls are still allowed even when hasMore is false so the
-            // refresh button keeps working (issue #1516).
-            if (this.isLoading) {
-                return this._loadDataPromise || undefined;
+            // Serialize loads so infinite-scroll pages cannot overlap. A full refresh
+            // requested while another load is in flight invalidates that response and
+            // queues one latest-state reload. Multiple refreshes are coalesced.
+            if (this._loadDataPromise) {
+                if (!append) {
+                    this._loadRequestVersion = (this._loadRequestVersion || 0) + 1;
+                    this._reloadQueued = true;
+                }
+                return this._loadDataPromise;
             }
 
-            this.isLoading = true;
-            this._loadDataPromise = this._runLoadData(append);
+            const initialVersion = (this._loadRequestVersion || 0) + 1;
+            this._loadRequestVersion = initialVersion;
+
+            const runQueue = async () => {
+                let nextAppend = append;
+                let requestVersion = initialVersion;
+
+                do {
+                    this._reloadQueued = false;
+                    this.isLoading = true;
+                    await this._runLoadData(nextAppend, requestVersion);
+
+                    if (!this._reloadQueued) break;
+                    nextAppend = false;
+                    requestVersion = this._loadRequestVersion;
+                } while (true);
+            };
+
+            const loadPromise = runQueue();
+            this._loadDataPromise = loadPromise;
             try {
-                return await this._loadDataPromise;
+                return await loadPromise;
             } finally {
-                this._loadDataPromise = null;
+                if (this._loadDataPromise === loadPromise) {
+                    this._loadDataPromise = null;
+                    this.isLoading = false;
+                }
             }
         }
 
-        async _runLoadData(append = false) {
+        async _runLoadData(append = false, requestVersion = this._loadRequestVersion || 0) {
+            const isObsolete = () => requestVersion !== (this._loadRequestVersion || 0);
             // Marks the window in which a pending metadataStale flag may be acted on
             // (issue #4364) — see shouldRebuildColumns().
             this._fullReload = !append;
@@ -746,9 +769,11 @@ class IntegramTable{
                 if (this.getDataSourceType() === 'table') {
                     // Load data from table format (object/{typeId}/?JSON_OBJ&F_U={parentId}) (issue #697)
                     json = await this.loadDataFromTable(append);
+                    if (isObsolete()) return;
                 } else {
                     // Load data from report format (default behavior) (issue #697)
                     json = await this.loadDataFromReport(append);
+                    if (isObsolete()) return;
                     // Auto-set table title from report header if not explicitly provided (issue #537)
                     if (json && !this.options.title && json.header) {
                         this.options.title = json.header;
@@ -881,6 +906,7 @@ class IntegramTable{
                     window.requestAnimationFrame(() => this.restoreScrollState(appendScrollState));
                 }
             } catch (error) {
+                if (isObsolete()) return;
                 console.error('Error loading data:', error);
                 // Stop auto-loading after a failed request (issue #2763).
                 // handleLoadDataError() re-renders the table to keep the filter
@@ -895,8 +921,10 @@ class IntegramTable{
                 this._fullReload = false;
                 this.isLoading = false;
                 this.endRequest();
-                // Check if table fits on screen and needs more data
-                this.checkAndLoadMore();
+                // Only the newest completed state may trigger pagination.
+                if (!isObsolete() && !this._reloadQueued) {
+                    this.checkAndLoadMore();
+                }
             }
         }
 
