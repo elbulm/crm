@@ -140,5 +140,9 @@ assert.ok(!modularSource.includes("document.addEventListener('click', (e) =>"),
     'modal-owned document click handlers must use lifecycle cleanup');
 assert.ok(!modularSource.includes("window.addEventListener('resize', () => this.updateContainerHeight())"),
     'rendering must not accumulate anonymous fallback resize handlers');
+assert.ok(modularSource.includes("this.container.removeEventListener('click', this._cellClickHandler)"),
+    're-rendering must remove the previous delegated cell-click handler');
+assert.strictEqual((modularSource.match(/addEventListener\('click', this\._cellClickHandler\)/g) || []).length, 1,
+    'the table has one controlled cell-click delegation site');
 
-console.log('✓ Modal lifecycle closes one window at a time and cleans up global listeners');
+console.log('✓ Modal and table lifecycles clean up global and delegated listeners');

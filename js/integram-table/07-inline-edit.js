@@ -471,9 +471,12 @@
                 });
             });
 
-            // Use event delegation for cell clicks - attaches to container once, handles all cells
-            // This ensures listeners work even when cells are updated/recreated
-            this.container.addEventListener('click', (e) => {
+            // Use event delegation for cell clicks on the persistent container.
+            // Replace the previous handler so re-renders cannot accumulate callbacks.
+            if (this._cellClickHandler) {
+                this.container.removeEventListener('click', this._cellClickHandler);
+            }
+            this._cellClickHandler = (e) => {
                 const td = e.target.closest('td');
                 if (!td) return;
 
@@ -540,7 +543,8 @@
                         }
                     }
                 }
-            });
+            };
+            this.container.addEventListener('click', this._cellClickHandler);
 
             // Checkbox selection handlers
             if (this.checkboxMode) {
