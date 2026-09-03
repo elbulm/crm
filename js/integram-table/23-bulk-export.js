@@ -731,7 +731,7 @@
                     // Resolve the symbolic format exactly as renderCell does so the export
                     // matches what is shown on screen (issue #3763).
                     const format = this.resolveColumnFormat(col);
-                    let value = cellValue || '';
+                    let value = cellValue ?? '';
 
                     // Issue #378, #925: For reference fields and GRANT/REPORT_COLUMN, remove "id:" prefix from "id:Value" format
                     const isRefField = col.ref_id != null || (col.ref && col.ref !== 0);
@@ -794,7 +794,7 @@
                     // Resolve the symbolic format exactly as renderCell does so the export
                     // matches what is shown on screen (issue #3763).
                     const format = this.resolveColumnFormat(col);
-                    let value = cellValue || '';
+                    let value = cellValue ?? '';
 
                     // Issue #378, #925: For reference fields and GRANT/REPORT_COLUMN, remove "id:" prefix from "id:Value" format
                     const isRefField = col.ref_id != null || (col.ref && col.ref !== 0);
@@ -844,27 +844,30 @@
             });
         }
 
+        /** Prefix formula-like CSV values so spreadsheet programs keep them as text. */
+        neutralizeCsvFormula(value) {
+            const cell = value === null || value === undefined ? '' : String(value);
+            return /^[\s\u0000-\u001F\u007F-\u009F\uFEFF]*[=+\-@]/u.test(cell) ? "'" + cell : cell;
+        }
+
+        escapeCsvCell(value) {
+            const cell = this.neutralizeCsvFormula(value);
+            return /[",\r\n]/.test(cell) ? '"' + cell.replace(/"/g, '""') + '"' : cell;
+        }
+
         /**
          * Export data to CSV format
          * @param {Array} data - Array of data rows
          * @param {Array} columns - Array of column definitions
          */
         exportToCSV(data, columns) {
-            // Prepare CSV content
-            const headers = columns.map(col => col.name);
+            // Prepare CSV content. Headers and values are both neutralized so a
+            // spreadsheet cannot interpret server-controlled text as a formula.
+            const headers = columns.map(col => this.escapeCsvCell(col.name));
             const csvRows = [headers];
 
-            // Add data rows
             data.forEach(row => {
-                const csvRow = row.map(cell => {
-                    // Escape quotes and wrap in quotes if contains comma, newline, or quote
-                    const cellStr = String(cell);
-                    if (cellStr.includes(',') || cellStr.includes('\n') || cellStr.includes('"')) {
-                        return '"' + cellStr.replace(/"/g, '""') + '"';
-                    }
-                    return cellStr;
-                });
-                csvRows.push(csvRow);
+                csvRows.push(row.map(cell => this.escapeCsvCell(cell)));
             });
 
             // Join rows with newlines

@@ -14845,7 +14845,15 @@ class IntegramTable{
             const resetBtns = modal.querySelectorAll('.pwd-reset-btn');
             const resetMailBtns = modal.querySelectorAll('.pwd-reset-mail-btn');
 
-            const generatePassword = () => (Math.random().toString(36) + Math.random().toString(36)).replace(/\./g, '').substr(1, 8);
+            const generatePassword = () => {
+                try {
+                    return this.generateSecurePassword();
+                } catch (error) {
+                    console.error('Secure password generation failed:', error);
+                    this.showCopyNotification('Не удалось безопасно сгенерировать пароль', true, 5000);
+                    return null;
+                }
+            };
 
             const copyToClipboard = (text) => {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -14874,6 +14882,7 @@ class IntegramTable{
                     const pwdInput = modal.querySelector(`#field-${ fieldId }`);
                     if (!pwdInput) return;
                     const pwd = generatePassword();
+                    if (!pwd) return;
                     pwdInput.value = pwd;
                     copyToClipboard(pwd);
                     showCopied(fieldId);
@@ -14895,6 +14904,7 @@ class IntegramTable{
                         return;
                     }
                     const pwd = generatePassword();
+                    if (!pwd) return;
                     pwdInput.value = pwd;
                     const db = window.location.pathname.split('/')[1] || '';
                     // Build login link without prepending username as a separate line (issue #1591)
@@ -17625,6 +17635,45 @@ class IntegramTable{
         }
 
         /**
+         * Generate a password with Web Crypto and rejection sampling. Each password
+         * contains upper/lowercase letters, a digit and a symbol.
+         */
+        generateSecurePassword(length = 16) {
+            const passwordLength = Math.max(12, Number.parseInt(length, 10) || 16);
+            const cryptoApi = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+            if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function') {
+                throw new Error('Secure random number generator is unavailable');
+            }
+
+            const groups = [
+                'ABCDEFGHJKLMNPQRSTUVWXYZ',
+                'abcdefghijkmnopqrstuvwxyz',
+                '23456789',
+                '-_.!@#'
+            ];
+            const alphabet = groups.join('');
+            const randomIndex = upperBound => {
+                const range = 0x100000000;
+                const unbiasedLimit = range - (range % upperBound);
+                const random = new Uint32Array(1);
+                do {
+                    cryptoApi.getRandomValues(random);
+                } while (random[0] >= unbiasedLimit);
+                return random[0] % upperBound;
+            };
+
+            const chars = groups.map(group => group[randomIndex(group.length)]);
+            while (chars.length < passwordLength) {
+                chars.push(alphabet[randomIndex(alphabet.length)]);
+            }
+            for (let index = chars.length - 1; index > 0; index--) {
+                const swapIndex = randomIndex(index + 1);
+                [chars[index], chars[swapIndex]] = [chars[swapIndex], chars[index]];
+            }
+            return chars.join('');
+        }
+
+        /**
          * Allow only presentation-oriented CSS declarations in STYLE companion
          * columns. Attribute delimiters, resource loads and legacy script-capable
          * CSS constructs are rejected.
@@ -18974,7 +19023,7 @@ class IntegramTable{
                     // Resolve the symbolic format exactly as renderCell does so the export
                     // matches what is shown on screen (issue #3763).
                     const format = this.resolveColumnFormat(col);
-                    let value = cellValue || '';
+                    let value = cellValue ?? '';
 
                     // Issue #378, #925: For reference fields and GRANT/REPORT_COLUMN, remove "id:" prefix from "id:Value" format
                     const isRefField = col.ref_id != null || (col.ref && col.ref !== 0);
@@ -19037,7 +19086,7 @@ class IntegramTable{
                     // Resolve the symbolic format exactly as renderCell does so the export
                     // matches what is shown on screen (issue #3763).
                     const format = this.resolveColumnFormat(col);
-                    let value = cellValue || '';
+                    let value = cellValue ?? '';
 
                     // Issue #378, #925: For reference fields and GRANT/REPORT_COLUMN, remove "id:" prefix from "id:Value" format
                     const isRefField = col.ref_id != null || (col.ref && col.ref !== 0);
@@ -19087,27 +19136,30 @@ class IntegramTable{
             });
         }
 
+        /** Prefix formula-like CSV values so spreadsheet programs keep them as text. */
+        neutralizeCsvFormula(value) {
+            const cell = value === null || value === undefined ? '' : String(value);
+            return /^[\s\u0000-\u001F\u007F-\u009F\uFEFF]*[=+\-@]/u.test(cell) ? "'" + cell : cell;
+        }
+
+        escapeCsvCell(value) {
+            const cell = this.neutralizeCsvFormula(value);
+            return /[",\r\n]/.test(cell) ? '"' + cell.replace(/"/g, '""') + '"' : cell;
+        }
+
         /**
          * Export data to CSV format
          * @param {Array} data - Array of data rows
          * @param {Array} columns - Array of column definitions
          */
         exportToCSV(data, columns) {
-            // Prepare CSV content
-            const headers = columns.map(col => col.name);
+            // Prepare CSV content. Headers and values are both neutralized so a
+            // spreadsheet cannot interpret server-controlled text as a formula.
+            const headers = columns.map(col => this.escapeCsvCell(col.name));
             const csvRows = [headers];
 
-            // Add data rows
             data.forEach(row => {
-                const csvRow = row.map(cell => {
-                    // Escape quotes and wrap in quotes if contains comma, newline, or quote
-                    const cellStr = String(cell);
-                    if (cellStr.includes(',') || cellStr.includes('\n') || cellStr.includes('"')) {
-                        return '"' + cellStr.replace(/"/g, '""') + '"';
-                    }
-                    return cellStr;
-                });
-                csvRows.push(csvRow);
+                csvRows.push(row.map(cell => this.escapeCsvCell(cell)));
             });
 
             // Join rows with newlines

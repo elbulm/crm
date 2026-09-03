@@ -361,7 +361,15 @@
             const resetBtns = modal.querySelectorAll('.pwd-reset-btn');
             const resetMailBtns = modal.querySelectorAll('.pwd-reset-mail-btn');
 
-            const generatePassword = () => (Math.random().toString(36) + Math.random().toString(36)).replace(/\./g, '').substr(1, 8);
+            const generatePassword = () => {
+                try {
+                    return this.generateSecurePassword();
+                } catch (error) {
+                    console.error('Secure password generation failed:', error);
+                    this.showCopyNotification('Не удалось безопасно сгенерировать пароль', true, 5000);
+                    return null;
+                }
+            };
 
             const copyToClipboard = (text) => {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -390,6 +398,7 @@
                     const pwdInput = modal.querySelector(`#field-${ fieldId }`);
                     if (!pwdInput) return;
                     const pwd = generatePassword();
+                    if (!pwd) return;
                     pwdInput.value = pwd;
                     copyToClipboard(pwd);
                     showCopied(fieldId);
@@ -411,6 +420,7 @@
                         return;
                     }
                     const pwd = generatePassword();
+                    if (!pwd) return;
                     pwdInput.value = pwd;
                     const db = window.location.pathname.split('/')[1] || '';
                     // Build login link without prepending username as a separate line (issue #1591)

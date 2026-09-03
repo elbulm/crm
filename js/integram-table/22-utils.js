@@ -234,6 +234,45 @@
         }
 
         /**
+         * Generate a password with Web Crypto and rejection sampling. Each password
+         * contains upper/lowercase letters, a digit and a symbol.
+         */
+        generateSecurePassword(length = 16) {
+            const passwordLength = Math.max(12, Number.parseInt(length, 10) || 16);
+            const cryptoApi = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+            if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function') {
+                throw new Error('Secure random number generator is unavailable');
+            }
+
+            const groups = [
+                'ABCDEFGHJKLMNPQRSTUVWXYZ',
+                'abcdefghijkmnopqrstuvwxyz',
+                '23456789',
+                '-_.!@#'
+            ];
+            const alphabet = groups.join('');
+            const randomIndex = upperBound => {
+                const range = 0x100000000;
+                const unbiasedLimit = range - (range % upperBound);
+                const random = new Uint32Array(1);
+                do {
+                    cryptoApi.getRandomValues(random);
+                } while (random[0] >= unbiasedLimit);
+                return random[0] % upperBound;
+            };
+
+            const chars = groups.map(group => group[randomIndex(group.length)]);
+            while (chars.length < passwordLength) {
+                chars.push(alphabet[randomIndex(alphabet.length)]);
+            }
+            for (let index = chars.length - 1; index > 0; index--) {
+                const swapIndex = randomIndex(index + 1);
+                [chars[index], chars[swapIndex]] = [chars[swapIndex], chars[index]];
+            }
+            return chars.join('');
+        }
+
+        /**
          * Allow only presentation-oriented CSS declarations in STYLE companion
          * columns. Attribute delimiters, resource loads and legacy script-capable
          * CSS constructs are rejected.
