@@ -56,7 +56,7 @@
             this.refFetchCache = {};  // Cache for fetchReferenceOptions results by composite key (issue #1571)
             this.editableColumns = new Map();  // Map of column IDs to their corresponding ID column IDs
             this.checkboxMode = false;  // Whether checkbox selection column is visible
-            this.selectedRows = new Set();  // Set of selected row indices
+            this.selectedRows = new Set();  // Set of selected record IDs (normalized to strings)
             this.globalMetadata = null;  // Global metadata for determining parent relationships
             this.globalMetadataPromise = null;  // Promise for in-progress globalMetadata fetch (issue #789)
             this.currentEditingCell = null;  // Track currently editing cell
@@ -162,6 +162,45 @@
             this.refTextFilterTypes = new Set(['~', '^', '!', '@', '!@']);
 
             this.init();
+        }
+
+        /**
+         * Return the stable selection key for a rendered row.
+         * Row positions change after sorting/filtering, so they must never be used
+         * as destructive-action identifiers.
+         */
+        getRowSelectionKey(rowIndex) {
+            const rawItem = this.rawObjectData && this.rawObjectData[rowIndex];
+            if (!rawItem || rawItem.i === null || rawItem.i === undefined || rawItem.i === '') {
+                return null;
+            }
+            return String(rawItem.i);
+        }
+
+        isRowSelected(rowIndex) {
+            const key = this.getRowSelectionKey(rowIndex);
+            return key !== null && this.selectedRows.has(key);
+        }
+
+        getSelectableRowKeys() {
+            const keys = [];
+            for (let rowIndex = 0; rowIndex < this.data.length; rowIndex++) {
+                const key = this.getRowSelectionKey(rowIndex);
+                if (key !== null) keys.push(key);
+            }
+            return keys;
+        }
+
+        areAllSelectableRowsSelected() {
+            const keys = this.getSelectableRowKeys();
+            return keys.length > 0 && keys.every(key => this.selectedRows.has(key));
+        }
+
+        pruneSelectedRows() {
+            const visibleKeys = new Set(this.getSelectableRowKeys());
+            for (const key of this.selectedRows) {
+                if (!visibleKeys.has(key)) this.selectedRows.delete(key);
+            }
         }
 
         /**
@@ -697,6 +736,8 @@
                 // If server returned null or empty result, treat as empty (issue #1514)
                 if (!json) {
                     this.data = [];
+                    this.rawObjectData = [];
+                    this.selectedRows.clear();
                     this.loadedRecords = 0;
                     this.hasMore = false;
                     this.totalRows = 0;
@@ -739,6 +780,10 @@
                     this.loadedRecords = 0;
                     // Replace raw object data if present
                     this.rawObjectData = rawData;
+                    // Keep only selections that still refer to records in the
+                    // replacement result set. This prevents hidden/stale rows
+                    // from being deleted after a filter or refresh.
+                    this.pruneSelectedRows();
                 }
 
                 this.loadedRecords += newRows.length;

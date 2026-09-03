@@ -202,6 +202,10 @@
 
             let escapedValue;
             let fullValueForEditing;
+            // Issue #4385: record/reference ID for the cell, mirrored onto the
+            // parent <td> title so it stays readable even when the .edit-icon
+            // (or a link) fully covers the inner .cell-content-wrapper.
+            let cellTitleId = '';
 
             // BOOLEAN cells use HTML icons, so skip HTML escaping for them
             if (format === 'BOOLEAN') {
@@ -228,14 +232,8 @@
                     // then linkify both the truncated display portion and the full value for the modal.
                     if (this.settings.truncateLongValues && escapedValue.length > 127) {
                         const truncatedEscaped = escapedValue.substring(0, 127);
-                        const fullLinkified = this.linkifyText(escapedValue);
-                        const fullValueEscaped = fullLinkified
-                            .replace(/\\/g, '\\\\')
-                            .replace(/\n/g, '\\n')
-                            .replace(/\r/g, '\\r')
-                            .replace(/'/g, '\\\'');
-                        const instanceName = this.options.instanceName;
-                        escapedValue = `${ this.linkifyText(truncatedEscaped) }<a href="#" class="show-full-value" onclick="window.${ instanceName }.showFullValue(event, '${ fullValueEscaped }'); return false;">...</a>`;
+                        const fullValueAttr = this.escapeHtml(String(displayValue));
+                        escapedValue = `${ this.linkifyText(truncatedEscaped) }<a href="#" class="show-full-value" data-full-value="${ fullValueAttr }">...</a>`;
                     } else {
                         escapedValue = this.linkifyText(escapedValue);
                     }
@@ -245,14 +243,8 @@
             // Truncate long values if setting is enabled (for non-linkified formats)
             if (this.settings.truncateLongValues && escapedValue.length > 127 && format !== 'SHORT' && format !== 'CHARS' && format !== 'MEMO') {
                 const truncated = escapedValue.substring(0, 127);
-                // Properly escape all JavaScript special characters for use in onclick string literal
-                const fullValueEscaped = escapedValue
-                    .replace(/\\/g, '\\\\')   // Escape backslashes first
-                    .replace(/\n/g, '\\n')    // Escape newlines
-                    .replace(/\r/g, '\\r')    // Escape carriage returns
-                    .replace(/'/g, '\\\'');   // Escape single quotes
-                const instanceName = this.options.instanceName;
-                escapedValue = `${ truncated }<a href="#" class="show-full-value" onclick="window.${ instanceName }.showFullValue(event, '${ fullValueEscaped }'); return false;">...</a>`;
+                const fullValueAttr = this.escapeHtml(String(displayValue));
+                escapedValue = `${ truncated }<a href="#" class="show-full-value" data-full-value="${ fullValueAttr }">...</a>`;
             }
 
             // Track typeId computed in the edit icon block for use in editableAttrs
@@ -416,6 +408,7 @@
                         : `window.${ instanceName }.openEditForm('${ recordId }', '${ typeId }', ${ rowIndex }); event.stopPropagation();`;
                     const editIcon = `<span class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></span>`;
                     escapedValue = `<div class="cell-content-wrapper"><span title="${ recordId }">${ displayContent }</span>${ editIcon }</div>`;
+                    cellTitleId = recordId; // Issue #4385: expose ID on the parent <td>
                 }
             }
 
@@ -428,6 +421,7 @@
                     const dbName = pathParts.length >= 2 ? pathParts[1] : '';
                     const refUrl = `/${ dbName }/table/${ refTypeId }?F_I=${ refValueId }`;
                     escapedValue = `<div class="cell-content-wrapper"><span title="${ refValueId }"><a href="${ refUrl }" class="ref-value-link" onclick="event.stopPropagation();">${ escapedValue }</a></span></div>`;
+                    cellTitleId = refValueId; // Issue #4385: expose ID on the parent <td>
                 }
             }
 
@@ -436,6 +430,7 @@
             if (isAnyRecordLink && refValueId && !escapedValue.includes('cell-content-wrapper')) {
                 const instanceName = this.options.instanceName;
                 escapedValue = `<div class="cell-content-wrapper"><span title="${ refValueId }"><a href="#" class="any-record-link" data-record-id="${ refValueId }" onmouseover="window.${ instanceName }.resolveAnyRecordLink(this, '${ refValueId }');" onclick="window.${ instanceName }.navigateAnyRecordLink(event, this, '${ refValueId }'); return false;">${ escapedValue }</a></span></div>`;
+                cellTitleId = refValueId; // Issue #4385: expose ID on the parent <td>
             }
 
             // Add inline editing data attributes for editable cells (only when not already showing edit icon)
@@ -539,7 +534,10 @@
                 rowNumberHtml = this.renderSubordinateRowNumber(rowIndex, withEditIcon);
             }
 
-            return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }${ editableAttrs }>${ escapedValue }${ rowNumberHtml }</td>`;
+            // Issue #4385: mirror the record/reference ID onto the parent <td> title so the
+            // ID stays discoverable even when the .edit-icon covers the inner wrapper entirely.
+            const cellTitleAttr = cellTitleId ? ` title="${ cellTitleId }"` : '';
+            return `<td class="${ cellClass }" data-row="${ rowIndex }" data-col="${ colIndex }" data-source-type="${ this.getDataSourceType() }"${ dataTypeAttrs }${ customStyle }${ editableAttrs }${ cellTitleAttr }>${ escapedValue }${ rowNumberHtml }</td>`;
         }
 
         /**
@@ -566,13 +564,13 @@
 
             this.groupedData.forEach((rowInfo, rowIndex) => {
                 const row = rowInfo.data;
-                const selectedClass = this.selectedRows.has(rowInfo.originalIndex) ? 'row-selected' : '';
+                const selectedClass = this.isRowSelected(rowInfo.originalIndex) ? 'row-selected' : '';
 
                 rowsHtml += `<tr class="${ selectedClass }">`;
 
                 // Add checkbox column if enabled
                 if (this.checkboxMode) {
-                    rowsHtml += `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowInfo.originalIndex }" ${ this.selectedRows.has(rowInfo.originalIndex) ? 'checked' : '' }></td>`;
+                    rowsHtml += `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowInfo.originalIndex }" ${ this.isRowSelected(rowInfo.originalIndex) ? 'checked' : '' }></td>`;
                 }
 
                 // Render group cells (with rowspan if this row starts a new group)
@@ -783,7 +781,7 @@
                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                         })() : '';
                         rows[depth].push(`
-                            <th data-column-id="${ col.id }" draggable="true"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
+                            <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
                                 <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ displayName }</span>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
@@ -848,7 +846,7 @@
                 })() : '';
 
                 return `
-                    <th data-column-id="${ col.id }" draggable="true"${ widthStyle } class="${ groupingClass }">
+                    <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle } class="${ groupingClass }">
                         <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ col.name }</span>
                         ${ refIconHtml }
                         ${ addButtonHtml }

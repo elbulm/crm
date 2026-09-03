@@ -73,7 +73,7 @@ class IntegramTable{
             this.refFetchCache = {};  // Cache for fetchReferenceOptions results by composite key (issue #1571)
             this.editableColumns = new Map();  // Map of column IDs to their corresponding ID column IDs
             this.checkboxMode = false;  // Whether checkbox selection column is visible
-            this.selectedRows = new Set();  // Set of selected row indices
+            this.selectedRows = new Set();  // Set of selected record IDs (normalized to strings)
             this.globalMetadata = null;  // Global metadata for determining parent relationships
             this.globalMetadataPromise = null;  // Promise for in-progress globalMetadata fetch (issue #789)
             this.currentEditingCell = null;  // Track currently editing cell
@@ -179,6 +179,45 @@ class IntegramTable{
             this.refTextFilterTypes = new Set(['~', '^', '!', '@', '!@']);
 
             this.init();
+        }
+
+        /**
+         * Return the stable selection key for a rendered row.
+         * Row positions change after sorting/filtering, so they must never be used
+         * as destructive-action identifiers.
+         */
+        getRowSelectionKey(rowIndex) {
+            const rawItem = this.rawObjectData && this.rawObjectData[rowIndex];
+            if (!rawItem || rawItem.i === null || rawItem.i === undefined || rawItem.i === '') {
+                return null;
+            }
+            return String(rawItem.i);
+        }
+
+        isRowSelected(rowIndex) {
+            const key = this.getRowSelectionKey(rowIndex);
+            return key !== null && this.selectedRows.has(key);
+        }
+
+        getSelectableRowKeys() {
+            const keys = [];
+            for (let rowIndex = 0; rowIndex < this.data.length; rowIndex++) {
+                const key = this.getRowSelectionKey(rowIndex);
+                if (key !== null) keys.push(key);
+            }
+            return keys;
+        }
+
+        areAllSelectableRowsSelected() {
+            const keys = this.getSelectableRowKeys();
+            return keys.length > 0 && keys.every(key => this.selectedRows.has(key));
+        }
+
+        pruneSelectedRows() {
+            const visibleKeys = new Set(this.getSelectableRowKeys());
+            for (const key of this.selectedRows) {
+                if (!visibleKeys.has(key)) this.selectedRows.delete(key);
+            }
         }
 
         /**
@@ -714,6 +753,8 @@ class IntegramTable{
                 // If server returned null or empty result, treat as empty (issue #1514)
                 if (!json) {
                     this.data = [];
+                    this.rawObjectData = [];
+                    this.selectedRows.clear();
                     this.loadedRecords = 0;
                     this.hasMore = false;
                     this.totalRows = 0;
@@ -756,6 +797,10 @@ class IntegramTable{
                     this.loadedRecords = 0;
                     // Replace raw object data if present
                     this.rawObjectData = rawData;
+                    // Keep only selections that still refer to records in the
+                    // replacement result set. This prevents hidden/stale rows
+                    // from being deleted after a filter or refresh.
+                    this.pruneSelectedRows();
                 }
 
                 this.loadedRecords += newRows.length;
@@ -2041,7 +2086,7 @@ class IntegramTable{
                                     // Multi-row smart header
                                     const rowsOfCells = this.renderSmartHeaderRows(smartTree, smartDepth, 0, instanceName, groupingColumnSet);
                                     const checkboxHtml = this.checkboxMode
-                                        ? `<th class="checkbox-column-header" rowspan="${ smartDepth }"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.data.length > 0 && this.selectedRows.size === this.data.length ? 'checked' : '' }></th>`
+                                        ? `<th class="checkbox-column-header" rowspan="${ smartDepth }"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.areAllSelectableRowsSelected() ? 'checked' : '' }></th>`
                                         : '';
                                     const addColHtml = this.isStructureWritable()
                                         ? `<th class="add-column-header-cell" rowspan="${ smartDepth }" style="width: 36px; min-width: 36px;" title="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus"></i></th>`
@@ -2092,7 +2137,7 @@ class IntegramTable{
 
                                 return `
                                     <tr>
-                                        ${ this.checkboxMode ? `<th class="checkbox-column-header"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.data.length > 0 && this.selectedRows.size === this.data.length ? 'checked' : '' }></th>` : '' }
+                                        ${ this.checkboxMode ? `<th class="checkbox-column-header"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.areAllSelectableRowsSelected() ? 'checked' : '' }></th>` : '' }
                                         ${ singleRowCells }
                                         ${ this.settings.showReferences && (this.objectTableId || this.options.tableTypeId) ? `<th class="references-column-header" title="Таблицы, где эта таблица используется как справочник">Связи</th>` : '' }
                                         ${ this.isStructureWritable() ? `<th class="add-column-header-cell" style="width: 36px; min-width: 36px;" title="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus"></i></th>` : '' }
@@ -2115,8 +2160,8 @@ class IntegramTable{
                             ${ this.groupingEnabled && this.groupedData.length > 0 ?
                                 this.renderGroupedRows(orderedColumns, instanceName) :
                                 this.data.map((row, rowIndex) => `
-                                    <tr class="${ this.selectedRows.has(rowIndex) ? 'row-selected' : '' }">
-                                        ${ this.checkboxMode ? `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowIndex }" ${ this.selectedRows.has(rowIndex) ? 'checked' : '' }></td>` : '' }
+                                    <tr class="${ this.isRowSelected(rowIndex) ? 'row-selected' : '' }">
+                                        ${ this.checkboxMode ? `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowIndex }" ${ this.isRowSelected(rowIndex) ? 'checked' : '' }></td>` : '' }
                                         ${ orderedColumns.map((col, colIndex) => {
                                             const cellValue = row[this.columns.indexOf(col)];
                                             return this.renderCell(col, cellValue, rowIndex, colIndex);
@@ -2743,14 +2788,8 @@ class IntegramTable{
                     // then linkify both the truncated display portion and the full value for the modal.
                     if (this.settings.truncateLongValues && escapedValue.length > 127) {
                         const truncatedEscaped = escapedValue.substring(0, 127);
-                        const fullLinkified = this.linkifyText(escapedValue);
-                        const fullValueEscaped = fullLinkified
-                            .replace(/\\/g, '\\\\')
-                            .replace(/\n/g, '\\n')
-                            .replace(/\r/g, '\\r')
-                            .replace(/'/g, '\\\'');
-                        const instanceName = this.options.instanceName;
-                        escapedValue = `${ this.linkifyText(truncatedEscaped) }<a href="#" class="show-full-value" onclick="window.${ instanceName }.showFullValue(event, '${ fullValueEscaped }'); return false;">...</a>`;
+                        const fullValueAttr = this.escapeHtml(String(displayValue));
+                        escapedValue = `${ this.linkifyText(truncatedEscaped) }<a href="#" class="show-full-value" data-full-value="${ fullValueAttr }">...</a>`;
                     } else {
                         escapedValue = this.linkifyText(escapedValue);
                     }
@@ -2760,14 +2799,8 @@ class IntegramTable{
             // Truncate long values if setting is enabled (for non-linkified formats)
             if (this.settings.truncateLongValues && escapedValue.length > 127 && format !== 'SHORT' && format !== 'CHARS' && format !== 'MEMO') {
                 const truncated = escapedValue.substring(0, 127);
-                // Properly escape all JavaScript special characters for use in onclick string literal
-                const fullValueEscaped = escapedValue
-                    .replace(/\\/g, '\\\\')   // Escape backslashes first
-                    .replace(/\n/g, '\\n')    // Escape newlines
-                    .replace(/\r/g, '\\r')    // Escape carriage returns
-                    .replace(/'/g, '\\\'');   // Escape single quotes
-                const instanceName = this.options.instanceName;
-                escapedValue = `${ truncated }<a href="#" class="show-full-value" onclick="window.${ instanceName }.showFullValue(event, '${ fullValueEscaped }'); return false;">...</a>`;
+                const fullValueAttr = this.escapeHtml(String(displayValue));
+                escapedValue = `${ truncated }<a href="#" class="show-full-value" data-full-value="${ fullValueAttr }">...</a>`;
             }
 
             // Track typeId computed in the edit icon block for use in editableAttrs
@@ -3087,13 +3120,13 @@ class IntegramTable{
 
             this.groupedData.forEach((rowInfo, rowIndex) => {
                 const row = rowInfo.data;
-                const selectedClass = this.selectedRows.has(rowInfo.originalIndex) ? 'row-selected' : '';
+                const selectedClass = this.isRowSelected(rowInfo.originalIndex) ? 'row-selected' : '';
 
                 rowsHtml += `<tr class="${ selectedClass }">`;
 
                 // Add checkbox column if enabled
                 if (this.checkboxMode) {
-                    rowsHtml += `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowInfo.originalIndex }" ${ this.selectedRows.has(rowInfo.originalIndex) ? 'checked' : '' }></td>`;
+                    rowsHtml += `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowInfo.originalIndex }" ${ this.isRowSelected(rowInfo.originalIndex) ? 'checked' : '' }></td>`;
                 }
 
                 // Render group cells (with rowspan if this row starts a new group)
@@ -4259,6 +4292,19 @@ class IntegramTable{
         }
 
         attachEventListeners() {
+            // Delegation also covers links inserted after an inline edit.
+            // The full value is data, never JavaScript source.
+            if (!this._fullValueClickHandler) {
+                this._fullValueClickHandler = (event) => {
+                    const link = event.target.closest && event.target.closest('.show-full-value');
+                    if (!link || !this.container.contains(link)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.showFullValue(event, link.dataset.fullValue || '');
+                };
+                this.container.addEventListener('click', this._fullValueClickHandler);
+            }
+
             // Determine the first visible column ID — it cannot be moved (issue #951)
             const firstVisibleColumnId = this.columnOrder.find(id => this.visibleColumns.includes(id));
 
@@ -4529,9 +4575,7 @@ class IntegramTable{
                 if (selectAll) {
                     selectAll.addEventListener('change', (e) => {
                         if (e.target.checked) {
-                            for (let i = 0; i < this.data.length; i++) {
-                                this.selectedRows.add(i);
-                            }
+                            this.getSelectableRowKeys().forEach(key => this.selectedRows.add(key));
                         } else {
                             this.selectedRows.clear();
                         }
@@ -4543,10 +4587,12 @@ class IntegramTable{
                 rowCheckboxes.forEach(cb => {
                     cb.addEventListener('change', (e) => {
                         const rowIndex = parseInt(e.target.dataset.rowIndex);
+                        const rowKey = this.getRowSelectionKey(rowIndex);
+                        if (rowKey === null) return;
                         if (e.target.checked) {
-                            this.selectedRows.add(rowIndex);
+                            this.selectedRows.add(rowKey);
                         } else {
-                            this.selectedRows.delete(rowIndex);
+                            this.selectedRows.delete(rowKey);
                         }
                         this.renderPreservingScroll(() => this.render());
                     });
@@ -6956,13 +7002,8 @@ class IntegramTable{
             // Apply truncation if enabled
             if (this.settings.truncateLongValues && escapedValue.length > 127) {
                 const truncated = escapedValue.substring(0, 127);
-                const fullValueEscaped = escapedValue
-                    .replace(/\\/g, '\\\\')
-                    .replace(/\n/g, '\\n')
-                    .replace(/\r/g, '\\r')
-                    .replace(/'/g, '\\\'');
-                const instanceName = this.options.instanceName;
-                escapedValue = `${ truncated }<a href="#" class="show-full-value" onclick="window.${ instanceName }.showFullValue(event, '${ fullValueEscaped }'); return false;">...</a>`;
+                const fullValueAttr = this.escapeHtml(String(displayValue));
+                escapedValue = `${ truncated }<a href="#" class="show-full-value" data-full-value="${ fullValueAttr }">...</a>`;
             }
 
             // Update data attribute with full value for editing
@@ -9976,15 +10017,23 @@ class IntegramTable{
                     <button class="full-value-copy-btn" title="Копировать в буфер"><i class="pi pi-copy"></i></button>
                 </div>
                 <div class="full-value-content" style="max-height: 400px; overflow-y: auto; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; cursor: pointer;" title="Нажмите, чтобы скопировать">
-                    <pre style="white-space: pre-wrap; word-wrap: break-word; margin: 0;">${ fullValue }</pre>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word; margin: 0;"></pre>
                 </div>
                 <div style="text-align: right;">
-                    <button class="btn btn-secondary" onclick="this.closest('.column-settings-modal').remove(); document.querySelector('.column-settings-overlay').remove();">Закрыть</button>
+                    <button class="btn btn-secondary full-value-close-btn">Закрыть</button>
                 </div>
             `;
 
+            modal.querySelector('pre').textContent = String(fullValue ?? '');
+            const closeModal = () => {
+                modal.remove();
+                overlay.remove();
+                document.removeEventListener('keydown', handleEscape);
+            };
+
             // Extract plain text for clipboard (strip HTML tags from linkified content) - issue #1465
             const plainText = modal.querySelector('pre').textContent;
+            modal.querySelector('.full-value-close-btn').addEventListener('click', closeModal);
 
             // Copy to clipboard helper - issue #1465
             const copyToClipboard = (btn) => {
@@ -10010,17 +10059,12 @@ class IntegramTable{
             document.body.appendChild(overlay);
             document.body.appendChild(modal);
 
-            overlay.addEventListener('click', () => {
-                modal.remove();
-                overlay.remove();
-            });
+            overlay.addEventListener('click', closeModal);
 
             // Close on Escape key (issue #595)
             const handleEscape = (e) => {
                 if (e.key === 'Escape') {
-                    modal.remove();
-                    overlay.remove();
-                    document.removeEventListener('keydown', handleEscape);
+                    closeModal();
                 }
             };
             document.addEventListener('keydown', handleEscape);
@@ -18029,14 +18073,20 @@ class IntegramTable{
          * Bulk delete selected rows
          */
         async bulkDelete() {
-            const selectedIndices = Array.from(this.selectedRows).sort((a, b) => a - b);
-            if (selectedIndices.length === 0) return;
+            const selectedIds = Array.from(this.selectedRows);
+            if (selectedIds.length === 0) return;
 
-            // Collect record info for deletion
+            // Resolve the selected stable IDs against the current result set.
+            // Never translate a saved row position after sort/filter/reload.
             const records = [];
-            for (const rowIndex of selectedIndices) {
-                const rawItem = this.rawObjectData[rowIndex];
-                if (rawItem && rawItem.i) {
+            const rawItemsById = new Map(
+                this.rawObjectData
+                    .filter(rawItem => rawItem && rawItem.i !== null && rawItem.i !== undefined && rawItem.i !== '')
+                    .map(rawItem => [String(rawItem.i), rawItem])
+            );
+            for (const selectedId of selectedIds) {
+                const rawItem = rawItemsById.get(String(selectedId));
+                if (rawItem) {
                     const firstColValue = (rawItem.r && rawItem.r[0]) || '';
                     records.push({ id: rawItem.i, value: firstColValue });
                 }

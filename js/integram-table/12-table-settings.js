@@ -300,15 +300,23 @@
                     <button class="full-value-copy-btn" title="Копировать в буфер"><i class="pi pi-copy"></i></button>
                 </div>
                 <div class="full-value-content" style="max-height: 400px; overflow-y: auto; margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; cursor: pointer;" title="Нажмите, чтобы скопировать">
-                    <pre style="white-space: pre-wrap; word-wrap: break-word; margin: 0;">${ fullValue }</pre>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word; margin: 0;"></pre>
                 </div>
                 <div style="text-align: right;">
-                    <button class="btn btn-secondary" onclick="this.closest('.column-settings-modal').remove(); document.querySelector('.column-settings-overlay').remove();">Закрыть</button>
+                    <button class="btn btn-secondary full-value-close-btn">Закрыть</button>
                 </div>
             `;
 
+            modal.querySelector('pre').textContent = String(fullValue ?? '');
+            const closeModal = () => {
+                modal.remove();
+                overlay.remove();
+                document.removeEventListener('keydown', handleEscape);
+            };
+
             // Extract plain text for clipboard (strip HTML tags from linkified content) - issue #1465
             const plainText = modal.querySelector('pre').textContent;
+            modal.querySelector('.full-value-close-btn').addEventListener('click', closeModal);
 
             // Copy to clipboard helper - issue #1465
             const copyToClipboard = (btn) => {
@@ -334,17 +342,12 @@
             document.body.appendChild(overlay);
             document.body.appendChild(modal);
 
-            overlay.addEventListener('click', () => {
-                modal.remove();
-                overlay.remove();
-            });
+            overlay.addEventListener('click', closeModal);
 
             // Close on Escape key (issue #595)
             const handleEscape = (e) => {
                 if (e.key === 'Escape') {
-                    modal.remove();
-                    overlay.remove();
-                    document.removeEventListener('keydown', handleEscape);
+                    closeModal();
                 }
             };
             document.addEventListener('keydown', handleEscape);

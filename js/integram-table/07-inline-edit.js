@@ -256,6 +256,19 @@
         }
 
         attachEventListeners() {
+            // Delegation also covers links inserted after an inline edit.
+            // The full value is data, never JavaScript source.
+            if (!this._fullValueClickHandler) {
+                this._fullValueClickHandler = (event) => {
+                    const link = event.target.closest && event.target.closest('.show-full-value');
+                    if (!link || !this.container.contains(link)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.showFullValue(event, link.dataset.fullValue || '');
+                };
+                this.container.addEventListener('click', this._fullValueClickHandler);
+            }
+
             // Determine the first visible column ID — it cannot be moved (issue #951)
             const firstVisibleColumnId = this.columnOrder.find(id => this.visibleColumns.includes(id));
 
@@ -526,9 +539,7 @@
                 if (selectAll) {
                     selectAll.addEventListener('change', (e) => {
                         if (e.target.checked) {
-                            for (let i = 0; i < this.data.length; i++) {
-                                this.selectedRows.add(i);
-                            }
+                            this.getSelectableRowKeys().forEach(key => this.selectedRows.add(key));
                         } else {
                             this.selectedRows.clear();
                         }
@@ -540,10 +551,12 @@
                 rowCheckboxes.forEach(cb => {
                     cb.addEventListener('change', (e) => {
                         const rowIndex = parseInt(e.target.dataset.rowIndex);
+                        const rowKey = this.getRowSelectionKey(rowIndex);
+                        if (rowKey === null) return;
                         if (e.target.checked) {
-                            this.selectedRows.add(rowIndex);
+                            this.selectedRows.add(rowKey);
                         } else {
-                            this.selectedRows.delete(rowIndex);
+                            this.selectedRows.delete(rowKey);
                         }
                         this.renderPreservingScroll(() => this.render());
                     });
@@ -2953,13 +2966,8 @@
             // Apply truncation if enabled
             if (this.settings.truncateLongValues && escapedValue.length > 127) {
                 const truncated = escapedValue.substring(0, 127);
-                const fullValueEscaped = escapedValue
-                    .replace(/\\/g, '\\\\')
-                    .replace(/\n/g, '\\n')
-                    .replace(/\r/g, '\\r')
-                    .replace(/'/g, '\\\'');
-                const instanceName = this.options.instanceName;
-                escapedValue = `${ truncated }<a href="#" class="show-full-value" onclick="window.${ instanceName }.showFullValue(event, '${ fullValueEscaped }'); return false;">...</a>`;
+                const fullValueAttr = this.escapeHtml(String(displayValue));
+                escapedValue = `${ truncated }<a href="#" class="show-full-value" data-full-value="${ fullValueAttr }">...</a>`;
             }
 
             // Update data attribute with full value for editing
@@ -2992,6 +3000,8 @@
                 const editIconHtml = hasEditIcon.outerHTML;
                 const cellRecordId = cell.dataset.refValueId || cell.dataset.recordId || '';
                 cell.innerHTML = `<div class="cell-content-wrapper"><span title="${ cellRecordId }">${ escapedValue }</span>${ editIconHtml }</div>`;
+                // Issue #4385: keep the ID readable on the parent cell when the edit icon covers the wrapper
+                if (cellRecordId) { cell.setAttribute('title', cellRecordId); }
             } else {
                 // Issue #915: If the cell was empty (no edit icon) and now has a value,
                 // add the edit icon using the stored data-edit-type-id attribute
@@ -3011,6 +3021,8 @@
                         : `window.${ instanceName }.openEditForm('${ editRecordId }', '${ editTypeId }', ${ editRowIndex }); event.stopPropagation();`;
                     const editIcon = `<span class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></span>`;
                     cell.innerHTML = `<div class="cell-content-wrapper"><span title="${ editRecordId }">${ escapedValue }</span>${ editIcon }</div>`;
+                    // Issue #4385: keep the ID readable on the parent cell when the edit icon covers the wrapper
+                    if (editRecordId) { cell.setAttribute('title', editRecordId); }
                 } else {
                     cell.innerHTML = escapedValue;
                 }

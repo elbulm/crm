@@ -137,7 +137,7 @@
                                     // Multi-row smart header
                                     const rowsOfCells = this.renderSmartHeaderRows(smartTree, smartDepth, 0, instanceName, groupingColumnSet);
                                     const checkboxHtml = this.checkboxMode
-                                        ? `<th class="checkbox-column-header" rowspan="${ smartDepth }"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.data.length > 0 && this.selectedRows.size === this.data.length ? 'checked' : '' }></th>`
+                                        ? `<th class="checkbox-column-header" rowspan="${ smartDepth }"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.areAllSelectableRowsSelected() ? 'checked' : '' }></th>`
                                         : '';
                                     const addColHtml = this.isStructureWritable()
                                         ? `<th class="add-column-header-cell" rowspan="${ smartDepth }" style="width: 36px; min-width: 36px;" title="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus"></i></th>`
@@ -177,7 +177,7 @@
                                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                                         })() : '';
                                         return `
-                                            <th data-column-id="${ col.id }" draggable="true"${ widthStyle }>
+                                            <th data-column-id="${ col.id }" draggable="true" title="${ col.id }"${ widthStyle }>
                                                 <span class="column-header-content" data-column-id="${ col.id }" title="${ col.id }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ col.name }</span>
                                                 ${ refIconHtml }
                                                 ${ addButtonHtml }
@@ -188,7 +188,7 @@
 
                                 return `
                                     <tr>
-                                        ${ this.checkboxMode ? `<th class="checkbox-column-header"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.data.length > 0 && this.selectedRows.size === this.data.length ? 'checked' : '' }></th>` : '' }
+                                        ${ this.checkboxMode ? `<th class="checkbox-column-header"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.areAllSelectableRowsSelected() ? 'checked' : '' }></th>` : '' }
                                         ${ singleRowCells }
                                         ${ this.settings.showReferences && (this.objectTableId || this.options.tableTypeId) ? `<th class="references-column-header" title="Таблицы, где эта таблица используется как справочник">Связи</th>` : '' }
                                         ${ this.isStructureWritable() ? `<th class="add-column-header-cell" style="width: 36px; min-width: 36px;" title="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus"></i></th>` : '' }
@@ -211,8 +211,8 @@
                             ${ this.groupingEnabled && this.groupedData.length > 0 ?
                                 this.renderGroupedRows(orderedColumns, instanceName) :
                                 this.data.map((row, rowIndex) => `
-                                    <tr class="${ this.selectedRows.has(rowIndex) ? 'row-selected' : '' }">
-                                        ${ this.checkboxMode ? `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowIndex }" ${ this.selectedRows.has(rowIndex) ? 'checked' : '' }></td>` : '' }
+                                    <tr class="${ this.isRowSelected(rowIndex) ? 'row-selected' : '' }">
+                                        ${ this.checkboxMode ? `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowIndex }" ${ this.isRowSelected(rowIndex) ? 'checked' : '' }></td>` : '' }
                                         ${ orderedColumns.map((col, colIndex) => {
                                             const cellValue = row[this.columns.indexOf(col)];
                                             return this.renderCell(col, cellValue, rowIndex, colIndex);

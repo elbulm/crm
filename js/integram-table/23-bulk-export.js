@@ -56,14 +56,20 @@
          * Bulk delete selected rows
          */
         async bulkDelete() {
-            const selectedIndices = Array.from(this.selectedRows).sort((a, b) => a - b);
-            if (selectedIndices.length === 0) return;
+            const selectedIds = Array.from(this.selectedRows);
+            if (selectedIds.length === 0) return;
 
-            // Collect record info for deletion
+            // Resolve the selected stable IDs against the current result set.
+            // Never translate a saved row position after sort/filter/reload.
             const records = [];
-            for (const rowIndex of selectedIndices) {
-                const rawItem = this.rawObjectData[rowIndex];
-                if (rawItem && rawItem.i) {
+            const rawItemsById = new Map(
+                this.rawObjectData
+                    .filter(rawItem => rawItem && rawItem.i !== null && rawItem.i !== undefined && rawItem.i !== '')
+                    .map(rawItem => [String(rawItem.i), rawItem])
+            );
+            for (const selectedId of selectedIds) {
+                const rawItem = rawItemsById.get(String(selectedId));
+                if (rawItem) {
                     const firstColValue = (rawItem.r && rawItem.r[0]) || '';
                     records.push({ id: rawItem.i, value: firstColValue });
                 }
