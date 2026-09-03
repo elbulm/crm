@@ -120,14 +120,8 @@
             cancelBtn.addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             saveBtn.addEventListener('click', () => {
                 // Save visibility
@@ -869,7 +863,10 @@
                 // Enter key confirms
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') cleanup(input.value);
-                    if (e.key === 'Escape') cleanup(null);
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cleanup(null);
+                    }
                 });
 
                 // Close on overlay click
@@ -877,14 +874,8 @@
                     if (e.target === confirmModal) cleanup(null);
                 });
 
-                // Close on Escape key
-                const handleEscape = (e) => {
-                    if (e.key === 'Escape') {
-                        document.removeEventListener('keydown', handleEscape);
-                        cleanup(null);
-                    }
-                };
-                document.addEventListener('keydown', handleEscape);
+                // Shared Escape stack closes only the topmost modal and unregisters on removal.
+                itCreateModalCloseHandler(confirmModal, () => cleanup(null));
             });
         }
 
@@ -930,14 +921,8 @@
                     }
                 });
 
-                // Close on Escape key
-                const handleEscape = (e) => {
-                    if (e.key === 'Escape') {
-                        document.removeEventListener('keydown', handleEscape);
-                        cleanup(false);
-                    }
-                };
-                document.addEventListener('keydown', handleEscape);
+                // Shared Escape stack closes only the topmost modal and unregisters on removal.
+                itCreateModalCloseHandler(confirmModal, () => cleanup(false));
             });
         }
 

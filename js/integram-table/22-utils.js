@@ -673,14 +673,8 @@
                 }
             });
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    overlay.remove();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(overlay, () => overlay.remove());
         }
 
         /**
@@ -727,14 +721,8 @@
                 }
             });
 
-            // Close on Escape key
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    overlay.remove();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(overlay, () => overlay.remove());
         }
 
         /**

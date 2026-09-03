@@ -177,14 +177,8 @@
 
             overlay.addEventListener('click', () => this.closeTableSettings());
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    this.closeTableSettings();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, () => this.closeTableSettings());
         }
 
         closeTableSettings() {
@@ -314,7 +308,6 @@
             const closeModal = () => {
                 modal.remove();
                 overlay.remove();
-                document.removeEventListener('keydown', handleEscape);
             };
 
             // Extract plain text for clipboard (strip HTML tags from linkified content) - issue #1465
@@ -347,13 +340,8 @@
 
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeModal();
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
         }
 
         toggleFilters() {

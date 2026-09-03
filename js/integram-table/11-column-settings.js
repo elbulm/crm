@@ -270,14 +270,8 @@
                 });
             };
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    this.closeColumnSettings();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, () => this.closeColumnSettings());
         }
 
         /**
@@ -447,6 +441,8 @@
                 colEditOverlay.remove();
                 colEditModal.remove();
             };
+
+            itCreateModalCloseHandler(colEditModal, closeColEdit);
 
             const refreshCurrentTableAfterDelete = async () => {
                 this.metadataCache = {};
@@ -1505,14 +1501,8 @@
             // Focus on the name input
             modal.querySelector(`#new-column-name-${instanceName}`).focus();
 
-            // Close on Escape key
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeAddColumnModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeAddColumnModal);
         }
 
         /**

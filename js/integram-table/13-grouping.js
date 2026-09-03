@@ -108,14 +108,8 @@
             modal.querySelector('#close-grouping-btn').addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
         }
 
         /**

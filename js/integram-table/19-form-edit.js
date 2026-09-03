@@ -285,19 +285,8 @@
 
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    // Only close if this modal is the topmost one
-                    const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                    const maxDepth = window._integramModalDepth || 0;
-                    if (currentDepth === maxDepth) {
-                        closeModal();
-                        document.removeEventListener('keydown', handleEscape);
-                    }
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Enter in input/textarea triggers Save (issue #1422)
             if (saveBtn) {
@@ -1090,19 +1079,8 @@
                 modal.querySelector('.subordinate-modal-close').addEventListener('click', closeModal);
                 overlay.addEventListener('click', closeModal);
 
-                // Close on Escape key (issue #595)
-                const handleEscape = (e) => {
-                    if (e.key === 'Escape') {
-                        // Only close if this modal is the topmost one
-                        const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                        const maxDepth = window._integramModalDepth || 0;
-                        if (currentDepth === maxDepth) {
-                            closeModal();
-                            document.removeEventListener('keydown', handleEscape);
-                        }
-                    }
-                };
-                document.addEventListener('keydown', handleEscape);
+                // Shared Escape stack closes only the topmost modal and unregisters on removal.
+                itCreateModalCloseHandler(modal, closeModal);
 
             } catch (error) {
                 console.error('Error opening subordinate table:', error);
@@ -1498,6 +1476,8 @@
                 overlay.remove();
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
+
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Close handlers
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);

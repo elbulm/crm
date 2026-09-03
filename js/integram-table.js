@@ -14,6 +14,76 @@
  * - Clickable "?" to fetch total record count
  */
 
+const itModalEscapeState = {
+    stack: [],
+    keydownHandler: null
+};
+
+function itIsModalConnected(modal) {
+    if (!modal) return false;
+    if (typeof modal.isConnected === 'boolean') return modal.isConnected;
+    return !!(document.documentElement && document.documentElement.contains(modal));
+}
+
+/**
+ * Register a modal in the shared Escape stack and return an idempotent close
+ * function. A single document listener serves every table instance, so closing
+ * a modal by a button, backdrop, save action, or DOM removal cannot leave a
+ * stale global keydown listener behind.
+ */
+function itCreateModalCloseHandler(modal, closeCallback) {
+    let active = true;
+    let observer = null;
+    const entry = { modal, close: null, unregister: null };
+
+    const unregister = () => {
+        if (!active) return;
+        active = false;
+        if (observer) observer.disconnect();
+        const index = itModalEscapeState.stack.indexOf(entry);
+        if (index !== -1) itModalEscapeState.stack.splice(index, 1);
+        if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {
+            document.removeEventListener('keydown', itModalEscapeState.keydownHandler);
+            itModalEscapeState.keydownHandler = null;
+        }
+    };
+
+    const close = (...args) => {
+        if (!active) return;
+        unregister();
+        return closeCallback(...args);
+    };
+
+    entry.close = close;
+    entry.unregister = unregister;
+    itModalEscapeState.stack.push(entry);
+
+    if (!itModalEscapeState.keydownHandler) {
+        itModalEscapeState.keydownHandler = (event) => {
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            while (itModalEscapeState.stack.length > 0) {
+                const top = itModalEscapeState.stack[itModalEscapeState.stack.length - 1];
+                if (!itIsModalConnected(top.modal)) {
+                    top.unregister();
+                    continue;
+                }
+                top.close();
+                break;
+            }
+        };
+        document.addEventListener('keydown', itModalEscapeState.keydownHandler);
+    }
+
+    if (typeof MutationObserver !== 'undefined' && document.documentElement) {
+        observer = new MutationObserver(() => {
+            if (!itIsModalConnected(modal)) unregister();
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
+    return close;
+}
+
 class IntegramTable{
         constructor(containerId, options = {}) {
             this.container = document.getElementById(containerId);
@@ -3651,6 +3721,7 @@ class IntegramTable{
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
+            itCreateModalCloseHandler(modal, closeModal);
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
             modal.querySelector('#paste-data-cancel-btn').addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
@@ -3787,6 +3858,7 @@ class IntegramTable{
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
 
+            itCreateModalCloseHandler(previewModal, closePreview);
             previewModal.querySelector('.edit-form-close').addEventListener('click', closePreview);
             previewModal.querySelector('#paste-preview-cancel-btn').addEventListener('click', closePreview);
             previewOverlay.addEventListener('click', closePreview);
@@ -6575,19 +6647,8 @@ class IntegramTable{
 
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    // Only close if this modal is the topmost one
-                    const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                    const maxDepth = window._integramModalDepth || 0;
-                    if (currentDepth === maxDepth) {
-                        closeModal();
-                        document.removeEventListener('keydown', handleEscape);
-                    }
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Enter in input/textarea triggers Save (issue #1422)
             modal.addEventListener('keydown', (e) => {
@@ -8411,14 +8472,8 @@ class IntegramTable{
                 });
             };
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    this.closeColumnSettings();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, () => this.closeColumnSettings());
         }
 
         /**
@@ -8588,6 +8643,8 @@ class IntegramTable{
                 colEditOverlay.remove();
                 colEditModal.remove();
             };
+
+            itCreateModalCloseHandler(colEditModal, closeColEdit);
 
             const refreshCurrentTableAfterDelete = async () => {
                 this.metadataCache = {};
@@ -9646,14 +9703,8 @@ class IntegramTable{
             // Focus on the name input
             modal.querySelector(`#new-column-name-${instanceName}`).focus();
 
-            // Close on Escape key
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeAddColumnModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeAddColumnModal);
         }
 
         /**
@@ -10012,14 +10063,8 @@ class IntegramTable{
 
             overlay.addEventListener('click', () => this.closeTableSettings());
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    this.closeTableSettings();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, () => this.closeTableSettings());
         }
 
         closeTableSettings() {
@@ -10149,7 +10194,6 @@ class IntegramTable{
             const closeModal = () => {
                 modal.remove();
                 overlay.remove();
-                document.removeEventListener('keydown', handleEscape);
             };
 
             // Extract plain text for clipboard (strip HTML tags from linkified content) - issue #1465
@@ -10182,13 +10226,8 @@ class IntegramTable{
 
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeModal();
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
         }
 
         toggleFilters() {
@@ -10310,14 +10349,8 @@ class IntegramTable{
             modal.querySelector('#close-grouping-btn').addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
         }
 
         /**
@@ -12800,19 +12833,8 @@ class IntegramTable{
 
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    // Only close if this modal is the topmost one
-                    const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                    const maxDepth = window._integramModalDepth || 0;
-                    if (currentDepth === maxDepth) {
-                        closeModal();
-                        document.removeEventListener('keydown', handleEscape);
-                    }
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Enter in input/textarea triggers Save (issue #1422)
             if (saveBtn) {
@@ -13605,19 +13627,8 @@ class IntegramTable{
                 modal.querySelector('.subordinate-modal-close').addEventListener('click', closeModal);
                 overlay.addEventListener('click', closeModal);
 
-                // Close on Escape key (issue #595)
-                const handleEscape = (e) => {
-                    if (e.key === 'Escape') {
-                        // Only close if this modal is the topmost one
-                        const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                        const maxDepth = window._integramModalDepth || 0;
-                        if (currentDepth === maxDepth) {
-                            closeModal();
-                            document.removeEventListener('keydown', handleEscape);
-                        }
-                    }
-                };
-                document.addEventListener('keydown', handleEscape);
+                // Shared Escape stack closes only the topmost modal and unregisters on removal.
+                itCreateModalCloseHandler(modal, closeModal);
 
             } catch (error) {
                 console.error('Error opening subordinate table:', error);
@@ -14013,6 +14024,8 @@ class IntegramTable{
                 overlay.remove();
                 window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
             };
+
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Close handlers
             modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
@@ -14787,19 +14800,8 @@ class IntegramTable{
             modal.querySelector('.subordinate-cancel-btn').addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    // Only close if this modal is the topmost one
-                    const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                    const maxDepth = window._integramModalDepth || 0;
-                    if (currentDepth === maxDepth) {
-                        closeModal();
-                        document.removeEventListener('keydown', handleEscape);
-                    }
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Enter in input/textarea triggers Save (issue #1467)
             const saveBtn = modal.querySelector('#subordinate-save-btn');
@@ -16315,19 +16317,8 @@ class IntegramTable{
 
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    // Only close if this modal is the topmost one
-                    const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                    const maxDepth = window._integramModalDepth || 0;
-                    if (currentDepth === maxDepth) {
-                        closeModal();
-                        document.removeEventListener('keydown', handleEscape);
-                    }
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             // Enter in input/textarea triggers Save (issue #1422)
             modal.addEventListener('keydown', (e) => {
@@ -16569,14 +16560,8 @@ class IntegramTable{
             cancelBtn.addEventListener('click', closeModal);
             overlay.addEventListener('click', closeModal);
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    closeModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(modal, closeModal);
 
             saveBtn.addEventListener('click', () => {
                 // Save visibility
@@ -17318,7 +17303,10 @@ class IntegramTable{
                 // Enter key confirms
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') cleanup(input.value);
-                    if (e.key === 'Escape') cleanup(null);
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cleanup(null);
+                    }
                 });
 
                 // Close on overlay click
@@ -17326,14 +17314,8 @@ class IntegramTable{
                     if (e.target === confirmModal) cleanup(null);
                 });
 
-                // Close on Escape key
-                const handleEscape = (e) => {
-                    if (e.key === 'Escape') {
-                        document.removeEventListener('keydown', handleEscape);
-                        cleanup(null);
-                    }
-                };
-                document.addEventListener('keydown', handleEscape);
+                // Shared Escape stack closes only the topmost modal and unregisters on removal.
+                itCreateModalCloseHandler(confirmModal, () => cleanup(null));
             });
         }
 
@@ -17379,14 +17361,8 @@ class IntegramTable{
                     }
                 });
 
-                // Close on Escape key
-                const handleEscape = (e) => {
-                    if (e.key === 'Escape') {
-                        document.removeEventListener('keydown', handleEscape);
-                        cleanup(false);
-                    }
-                };
-                document.addEventListener('keydown', handleEscape);
+                // Shared Escape stack closes only the topmost modal and unregisters on removal.
+                itCreateModalCloseHandler(confirmModal, () => cleanup(false));
             });
         }
 
@@ -18141,14 +18117,8 @@ class IntegramTable{
                 }
             });
 
-            // Close on Escape key (issue #595)
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    overlay.remove();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(overlay, () => overlay.remove());
         }
 
         /**
@@ -18195,14 +18165,8 @@ class IntegramTable{
                 }
             });
 
-            // Close on Escape key
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    overlay.remove();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            };
-            document.addEventListener('keydown', handleEscape);
+            // Shared Escape stack closes only the topmost modal and unregisters on removal.
+            itCreateModalCloseHandler(overlay, () => overlay.remove());
         }
 
         /**
@@ -20207,19 +20171,8 @@ class IntegramCreateFormHelper {
 
         overlay.addEventListener('click', closeModal);
 
-        // Close on Escape key (issue #595)
-        const handleEscape = (e) => {
-            if (e.key === 'Escape') {
-                // Only close if this modal is the topmost one
-                const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                const maxDepth = window._integramModalDepth || 0;
-                if (currentDepth === maxDepth) {
-                    closeModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            }
-        };
-        document.addEventListener('keydown', handleEscape);
+        // Shared Escape stack closes only the topmost modal and unregisters on removal.
+        itCreateModalCloseHandler(modal, closeModal);
 
         // Enter in input/textarea triggers Save (issue #1422)
         modal.addEventListener('keydown', (e) => {
@@ -20845,6 +20798,7 @@ class IntegramCreateFormHelper {
                     const firstOption = dropdown.querySelector('.inline-editor-reference-option');
                     if (firstOption) firstOption.click();
                 } else if (e.key === 'Escape') {
+                    e.preventDefault();
                     dropdown.style.display = 'none';
                     searchInput.blur();
                 }
@@ -20870,6 +20824,7 @@ class IntegramCreateFormHelper {
                     e.preventDefault();
                     option.click();
                 } else if (e.key === 'Escape') {
+                    e.preventDefault();
                     dropdown.style.display = 'none';
                     searchInput.focus();
                 }
@@ -21284,18 +21239,8 @@ class IntegramCreateFormHelper {
 
         overlay.addEventListener('click', closeModal);
 
-        // Close on Escape key
-        const handleEscape = (e) => {
-            if (e.key === 'Escape') {
-                const currentDepth = parseInt(modal.dataset.modalDepth) || 0;
-                const maxDepth = window._integramModalDepth || 0;
-                if (currentDepth === maxDepth) {
-                    closeModal();
-                    document.removeEventListener('keydown', handleEscape);
-                }
-            }
-        };
-        document.addEventListener('keydown', handleEscape);
+        // Shared Escape stack closes only the topmost modal and unregisters on removal.
+        itCreateModalCloseHandler(modal, closeModal);
 
         // Enter in input/textarea triggers Save (issue #1422)
         modal.addEventListener('keydown', (e) => {
@@ -21713,6 +21658,8 @@ class IntegramCreateFormHelper {
             window._integramModalDepth = Math.max(0, (window._integramModalDepth || 1) - 1);
         };
 
+        itCreateModalCloseHandler(modal, closeModal);
+
         // Close handlers
         modal.querySelector('.edit-form-close').addEventListener('click', closeModal);
         modal.querySelector('.paste-data-cancel-btn').addEventListener('click', closeModal);
@@ -21970,14 +21917,8 @@ class IntegramCreateFormHelper {
         cancelBtn.addEventListener('click', closeModal);
         overlay.addEventListener('click', closeModal);
 
-        // Close on Escape key
-        const handleEscape = (e) => {
-            if (e.key === 'Escape') {
-                closeModal();
-                document.removeEventListener('keydown', handleEscape);
-            }
-        };
-        document.addEventListener('keydown', handleEscape);
+        // Shared Escape stack closes only the topmost modal and unregisters on removal.
+        itCreateModalCloseHandler(modal, closeModal);
 
         saveBtn.addEventListener('click', () => {
             // Save visibility
