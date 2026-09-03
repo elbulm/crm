@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Демо сопоставления номенклатуры</title>
+  <link rel="stylesheet" href="./demo.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#setup" aria-label="Интеграм, демо">
+      <span class="brand-mark" aria-hidden="true">И</span>
+      <span>Интеграм <small>демо</small></span>
+    </a>
+    <nav aria-label="Разделы демо">
+      <button class="nav-link is-active" data-page="setup">Настройка</button>
+      <button class="nav-link" data-page="mass">Сопоставление</button>
+      <button class="nav-link" data-page="review">Проверка</button>
+      <button class="nav-link" data-page="export">Экспорт</button>
+    </nav>
+    <span class="safe-badge">Тестовые данные</span>
+  </header>
+
+  <main>
+    <section class="page is-active" id="setup" aria-labelledby="setup-title">
+      <div class="page-head">
+        <div><p class="eyebrow">Первый запуск</p><h1 id="setup-title">Подготовим два прайс-листа</h1><p>Мастер определит колонки и сохранит правила для следующих запусков.</p></div>
+        <span class="status-pill">Шаг <b id="step-number">1</b> из 4</span>
+      </div>
+      <ol class="stepper" aria-label="Этапы настройки">
+        <li class="is-active"><span>1</span>Файлы</li><li><span>2</span>Колонки</li><li><span>3</span>Правила</li><li><span>4</span>Готово</li>
+      </ol>
+
+      <div class="wizard-step is-active" data-step="1">
+        <div class="file-grid">
+          <article class="file-card"><span class="file-icon">XLSX</span><div><h2>Заявка клиента</h2><p id="rfp-file">Заявка_на_оборудование.xlsx</p><small>5 позиций · лист «Закупка»</small></div><div class="file-actions"><button class="text-button" data-preview-file="rfp">Посмотреть</button><button class="text-button" data-download-file="rfp">Скачать</button></div></article>
+          <article class="file-card"><span class="file-icon">XLSX</span><div><h2>Каталог поставщика</h2><p id="sku-file">Прайс_поставщика.xlsx</p><small>6 позиций · лист «Каталог»</small></div><div class="file-actions"><button class="text-button" data-preview-file="sku">Посмотреть</button><button class="text-button" data-download-file="sku">Скачать</button></div></article>
+        </div>
+        <section class="panel file-preview" id="file-preview" hidden aria-live="polite">
+          <div class="panel-head"><div><p class="eyebrow">Содержимое файла</p><h2 id="file-preview-title"></h2><p class="muted" id="file-preview-meta"></p></div><button class="text-button" id="close-file-preview">Скрыть</button></div>
+          <div class="table-wrap"><table><thead id="file-preview-head"></thead><tbody id="file-preview-body"></tbody></table></div>
+          <button class="button secondary download-link" id="file-preview-download" type="button">Скачать этот XLSX</button>
+        </section>
+        <div class="notice"><b>Демо безопасно.</b> Файлы вымышленные, запросы наружу не отправляются.</div>
+      </div>
+
+      <div class="wizard-step" data-step="2">
+        <div class="panel"><h2>Как читать колонки</h2><p class="muted">Проверьте найденные соответствия. В демо они уже заполнены.</p>
+          <div class="table-wrap"><table><thead><tr><th>Роль</th><th>В заявке</th><th>В каталоге</th><th>Уверенность</th></tr></thead><tbody id="mapping-body"></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="wizard-step" data-step="3">
+        <div class="settings-grid">
+          <div class="panel"><h2>Порог автоматического решения</h2><label for="threshold">Совпадение считается надёжным от <output id="threshold-value">85%</output></label><input id="threshold" type="range" min="50" max="100" value="85"><p class="muted">Остальные позиции попадут на ручную проверку.</p></div>
+          <div class="panel"><h2>Правила сравнения</h2><label class="check"><input type="checkbox" checked> Сначала сравнивать артикул</label><label class="check"><input type="checkbox" checked> Учитывать производителя</label><label class="check"><input type="checkbox" checked> Нормализовать единицы и сокращения</label><label class="check"><input type="checkbox"> Исключать товары без цены</label></div>
+        </div>
+      </div>
+
+      <div class="wizard-step" data-step="4">
+        <div class="ready"><span class="ready-mark">✓</span><p class="eyebrow">Профиль готов</p><h2>Можно запускать сопоставление</h2><p>Два файла проверены, 4 роли колонок настроены, порог решения сохранён.</p><div><button class="button primary" data-go="mass">Перейти к сопоставлению</button></div></div>
+      </div>
+      <div class="wizard-actions"><button class="button secondary" id="wizard-back" disabled>Назад</button><button class="button primary" id="wizard-next">Продолжить</button></div>
+    </section>
+
+    <section class="page" id="mass" aria-labelledby="mass-title">
+      <div class="page-head"><div><p class="eyebrow">Массовая обработка</p><h1 id="mass-title">Сопоставление номенклатуры</h1><p>Алгоритм сравнит наименования, артикулы, бренды и параметры.</p></div><button class="button primary" id="start-match">Запустить</button></div>
+      <div class="progress-panel" id="progress-panel" hidden><div><b id="progress-label">Подготовка…</b><span id="progress-count">0 из 5</span></div><progress id="match-progress" max="5" value="0"></progress></div>
+      <div class="stats" id="stats"><article><span>Всего</span><strong>5</strong></article><article><span>Найдено</span><strong id="found-stat">0</strong></article><article><span>На проверку</span><strong id="review-stat">0</strong></article><article><span>Без пары</span><strong id="empty-stat">0</strong></article></div>
+      <div class="panel"><div class="panel-head"><div><h2>Результаты</h2><p class="muted" id="mass-status">Нажмите «Запустить», чтобы начать.</p></div><button class="text-button" data-go="review">Открыть очередь проверки</button></div><div class="table-wrap"><table><thead><tr><th>Позиция заявки</th><th>Подобранный товар</th><th>Совпадение</th><th>Статус</th></tr></thead><tbody id="result-body"><tr><td colspan="4" class="empty-cell">Результаты появятся здесь</td></tr></tbody></table></div></div>
+    </section>
+
+    <section class="page" id="review" aria-labelledby="review-title">
+      <div class="page-head"><div><p class="eyebrow">Ручная проверка</p><h1 id="review-title">Нужно выбрать монитор</h1><p>У двух товаров похожие характеристики. Сравните кандидатов или запросите рекомендацию.</p></div><span class="status-pill">1 позиция в очереди</span></div>
+      <div class="review-layout">
+        <aside class="panel source-card"><p class="eyebrow">Из заявки</p><h2>Монитор 27″ QHD с USB-C</h2><dl><div><dt>Количество</dt><dd>12 шт.</dd></div><div><dt>Разрешение</dt><dd>2560 × 1440</dd></div><div><dt>Интерфейс</dt><dd>USB-C, питание 65 Вт</dd></div><div><dt>Ограничение</dt><dd>до 42 000 ₽</dd></div></dl><button class="button secondary full" id="ask-llm">Получить рекомендацию ИИ</button><div class="ai-note" id="ai-note" hidden></div></aside>
+        <div><div class="candidate-list" id="candidate-list"></div><div class="decision-bar"><span id="decision-hint">Выберите подходящий товар</span><div><button class="button secondary" id="reject-all">Нет подходящего</button><button class="button primary" id="accept-candidate" disabled>Подтвердить</button></div></div><div class="panel history"><h2>История решений</h2><ul id="decision-history"><li>Решений пока нет.</li></ul></div></div>
+      </div>
+    </section>
+
+    <section class="page" id="export" aria-labelledby="export-title">
+      <div class="page-head"><div><p class="eyebrow">Готовый результат</p><h1 id="export-title">Экспорт сопоставлений</h1><p>Скачайте таблицу для работы или JSON для интеграции.</p></div><span class="status-pill success">Готово к выгрузке</span></div>
+      <div class="export-layout"><div class="panel"><h2>Состав выгрузки</h2><div class="export-summary"><div><span>Позиции заявки</span><b>5</b></div><div><span>Подтверждено</span><b id="confirmed-export">3</b></div><div><span>Требует внимания</span><b id="attention-export">2</b></div></div><label for="export-format">Формат</label><select id="export-format"><option value="xlsx">Excel (.xlsx)</option><option value="json">JSON</option></select><button class="button primary full" id="download-export">Скачать файл</button><a class="api-link" href="./matching_export.json" target="_blank" rel="noreferrer">Открыть демо API →</a></div><div class="panel"><h2>Предпросмотр</h2><div class="table-wrap compact"><table><thead><tr><th>ID</th><th>Результат</th><th>Уверенность</th></tr></thead><tbody id="export-body"></tbody></table></div></div></div>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="../../js/xlsx0.18.5.full.min.js"></script>
+  <script src="../../download/xcom/js/xcom-mass-match.js"></script>
+  <script src="../../download/xcom/js/xcom-export.js"></script>
+  <script src="../../download/xcom/js/xcom-review.js"></script>
+  <script src="./demo.js"></script>
+</body>
+</html>

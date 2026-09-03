@@ -1,0 +1,48 @@
+[
+  {
+    "name": "mass_match",
+    "master": "RFP",
+    "description": "Кандидаты SKU для одной строки RFP; внешний фильтр FR_RFPID.",
+    "joins": [
+      { "table": "Токен RFP", "alias": "rt", "condition": "RFP.ID = rt.RFP" },
+      { "table": "Токен SKU", "alias": "st", "condition": "rt.Токен = st.Токен" },
+      { "table": "SKU", "alias": "sku", "condition": "st.SKU = sku.ID" }
+    ],
+    "columns": [
+      { "source": "RFP", "field": "$id", "name": "RFPID", "function": "abn_ID", "hidden": true },
+      { "source": "SKU", "field": "$id", "name": "SKUID", "function": "abn_ID" },
+      { "source": "SKU", "field": "Наименование", "name": "Наименование SKU" },
+      { "source": "SKU", "field": "Артикул", "name": "Артикул" },
+      { "source": "Токен", "field": "$id", "name": "токены", "function": "JSON_ARRAYAGG" },
+      { "source": "RFP", "field": "Бренд", "name": "Бренд RFP" },
+      { "source": "SKU", "field": "Бренд", "name": "Бренд SKU" },
+      { "source": "RFP", "field": "Модель", "name": "Модель RFP" },
+      { "source": "SKU", "field": "Модель", "name": "Модель SKU" },
+      { "source": "RFP", "field": "Тип", "name": "Тип RFP" },
+      { "source": "SKU", "field": "Тип", "name": "Тип SKU" },
+      { "source": "RFP", "field": "Размер", "name": "Размер RFP" },
+      { "source": "SKU", "field": "Размер", "name": "Размер SKU" }
+    ]
+  },
+  {
+    "name": "Сопоставление",
+    "master": "RFP",
+    "description": "Ручной просмотр кандидатов по общим токенам.",
+    "inherits": "mass_match"
+  },
+  {
+    "name": "matching_export",
+    "master": "RFP",
+    "description": "Результат сопоставления для Excel и JSON API.",
+    "columns": [
+      { "source": "RFP", "field": "$id", "name": "RFP ID", "function": "abn_ID" },
+      { "source": "RFP", "field": "$id", "name": "RFP" },
+      { "source": "RFP", "field": "Наименование", "name": "Наименование" },
+      { "source": "RFP", "field": "Артикул поставщика", "name": "Артикул поставщика" },
+      { "source": "RFP", "field": "Наш артикул", "name": "Наш артикул" },
+      { "source": "RFP", "field": "Кандидаты", "name": "Кандидаты" },
+      { "source": "RFP", "field": "Точность подбора", "name": "Точность подбора" },
+      { "source": "RFP", "field": "ИИ-вердикт", "name": "ИИ-вердикт" }
+    ]
+  }
+]

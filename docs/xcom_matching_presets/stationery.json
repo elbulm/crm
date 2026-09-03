@@ -1,0 +1,18 @@
+{
+  "id": "stationery",
+  "name": "Канцелярия",
+  "description": "Стартовый профиль для брендовых серий и моделей канцелярских товаров.",
+  "status": "starter",
+  "config": {
+    "category": "Канцелярия",
+    "preset": "stationery",
+    "tma_weight": 0.4,
+    "attribute_weights": [
+      { "rfp_key": "Бренд RFP", "sku_key": "Бренд SKU", "weight": 0.2 },
+      { "rfp_key": "Модель RFP", "sku_key": "Модель SKU", "weight": 0.25 }
+    ],
+    "required_attributes": [
+      { "rfp_key": "Бренд RFP", "sku_key": "Бренд SKU" }
+    ]
+  }
+}

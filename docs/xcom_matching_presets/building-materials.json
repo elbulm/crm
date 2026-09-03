@@ -1,0 +1,18 @@
+{
+  "id": "building-materials",
+  "name": "Стройматериалы",
+  "description": "Стартовый профиль для изделий, где тип и размер важнее точного артикула.",
+  "status": "starter",
+  "config": {
+    "category": "Стройматериалы",
+    "preset": "building-materials",
+    "tma_weight": 0.3,
+    "attribute_weights": [
+      { "rfp_key": "Тип RFP", "sku_key": "Тип SKU", "weight": 0.25 },
+      { "rfp_key": "Размер RFP", "sku_key": "Размер SKU", "weight": 0.2 }
+    ],
+    "required_attributes": [
+      { "rfp_key": "Тип RFP", "sku_key": "Тип SKU" }
+    ]
+  }
+}

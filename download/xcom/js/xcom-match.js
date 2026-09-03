@@ -15,6 +15,8 @@
         searchFields: [],
         values: {},
         rows: [],
+        selectedRow: null,
+        currentReport: null,
         searchRequestId: 0,
         reportRequestId: 0
     };
@@ -388,15 +390,16 @@
             if (col.name === 'ТММ') tmmIndex = i;
         });
 
+        var review = window.XcomReviewWorkspace;
         var headers = report.columns.map(function(column) {
             return '<th>' + escapeHtml(column.name) + '</th>';
-        }).join('');
-        var body = report.rows.map(function(row) {
+        }).join('') + (review ? '<th>Решение</th>' : '');
+        var body = report.rows.map(function(row, rowIndex) {
             var isTmm = tmmIndex >= 0 && trimValue(row[tmmIndex]) === '1';
             return '<tr' + (isTmm ? ' class="xcom-match-row-tmm"' : '') + '>' +
                 report.columns.map(function(column, index) {
                     return '<td>' + escapeHtml(row[index]) + '</td>';
-                }).join('') + '</tr>';
+                }).join('') + (review ? review.renderActionCell(rowIndex) : '') + '</tr>';
         }).join('');
 
         container.innerHTML = '<table class="xcom-match-table">' +
@@ -457,7 +460,12 @@
             limit: DEFAULT_LIMIT
         })).then(function(json) {
             if (requestId !== state.reportRequestId) return;
-            renderReport(normalizeReportResponse(json), row);
+            state.selectedRow = row;
+            state.currentReport = normalizeReportResponse(json);
+            renderReport(state.currentReport, row);
+            if (window.XcomReviewWorkspace && typeof window.XcomReviewWorkspace.onReportReady === 'function') {
+                window.XcomReviewWorkspace.onReportReady(row, state.currentReport);
+            }
         }).catch(function(error) {
             if (requestId !== state.reportRequestId) return;
             renderError('xcom-match-report-results', error.message || 'Не удалось выполнить сопоставление.');
@@ -545,6 +553,8 @@
         normalizeReportFilterKey: normalizeReportFilterKey,
         normalizeRows: normalizeRows,
         normalizeReportResponse: normalizeReportResponse,
+        _state: state,
+        renderReport: renderReport,
         init: init
     };
 

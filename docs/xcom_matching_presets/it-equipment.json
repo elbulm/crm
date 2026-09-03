@@ -1,0 +1,18 @@
+{
+  "id": "it-equipment",
+  "name": "IT-техника",
+  "description": "Стартовый профиль с жёстким совпадением бренда и модели.",
+  "status": "starter",
+  "config": {
+    "category": "IT-техника",
+    "preset": "it-equipment",
+    "tma_weight": 0.5,
+    "attribute_weights": [
+      { "rfp_key": "Тип RFP", "sku_key": "Тип SKU", "weight": 0.15 }
+    ],
+    "required_attributes": [
+      { "rfp_key": "Бренд RFP", "sku_key": "Бренд SKU" },
+      { "rfp_key": "Модель RFP", "sku_key": "Модель SKU" }
+    ]
+  }
+}

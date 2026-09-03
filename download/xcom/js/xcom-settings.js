@@ -70,7 +70,26 @@
             })
             : [];
         if (!attrs.length) attrs.push({ rfp_key: '', sku_key: '' });
-        return { tma_weight: weight, required_attributes: attrs };
+        var result = { tma_weight: weight, required_attributes: attrs };
+        if (Object.prototype.hasOwnProperty.call(cfg, 'category')) result.category = trimValue(cfg.category);
+        if (Object.prototype.hasOwnProperty.call(cfg, 'preset')) result.preset = trimValue(cfg.preset);
+        if (Object.prototype.hasOwnProperty.call(cfg, 'attribute_weights')) {
+            result.attribute_weights = Array.isArray(cfg.attribute_weights) ? cfg.attribute_weights.map(function(attr) {
+                return {
+                    rfp_key: trimValue(attr && attr.rfp_key),
+                    sku_key: trimValue(attr && attr.sku_key),
+                    weight: Number(attr && attr.weight) || 0
+                };
+            }) : [];
+        }
+        if (Object.prototype.hasOwnProperty.call(cfg, 'llm')) {
+            result.llm = {
+                enabled: !!(cfg.llm && cfg.llm.enabled),
+                gray_zone_min: Number(cfg.llm && cfg.llm.gray_zone_min),
+                gray_zone_max: Number(cfg.llm && cfg.llm.gray_zone_max)
+            };
+        }
+        return result;
     }
 
     // Поля формы → конфиг: пустые строки атрибутов отбрасываются (незаконченную строку
@@ -81,10 +100,31 @@
         }).map(function(attr) {
             return { rfp_key: trimValue(attr.rfp_key), sku_key: trimValue(attr.sku_key) };
         });
-        return {
+        var config = {
             tma_weight: Math.max(0, Math.min(1, Number(form.tma_weight))),
             required_attributes: attrs
         };
+        if (Object.prototype.hasOwnProperty.call(form, 'category')) config.category = trimValue(form.category);
+        if (Object.prototype.hasOwnProperty.call(form, 'preset')) config.preset = trimValue(form.preset);
+        if (Object.prototype.hasOwnProperty.call(form, 'attribute_weights')) {
+            config.attribute_weights = (form.attribute_weights || []).filter(function(attr) {
+                return trimValue(attr.rfp_key) && trimValue(attr.sku_key);
+            }).map(function(attr) {
+                return {
+                    rfp_key: trimValue(attr.rfp_key),
+                    sku_key: trimValue(attr.sku_key),
+                    weight: Math.max(0, Math.min(1, Number(attr.weight) || 0))
+                };
+            });
+        }
+        if (Object.prototype.hasOwnProperty.call(form, 'llm')) {
+            config.llm = {
+                enabled: !!(form.llm && form.llm.enabled),
+                gray_zone_min: Math.max(0, Math.min(100, Number(form.llm && form.llm.gray_zone_min) || 0)),
+                gray_zone_max: Math.max(0, Math.min(100, Number(form.llm && form.llm.gray_zone_max) || 0))
+            };
+        }
+        return config;
     }
 
     // --- Рендер формы ---------------------------------------------------------
@@ -103,8 +143,40 @@
         return row;
     }
 
+    function weightRow(attr) {
+        var row = document.createElement('div');
+        row.className = 'xcom-settings-weight-row';
+        row.innerHTML =
+            '<input class="xcom-settings-input xcom-settings-weight-rfp" type="text" placeholder="Колонка RFP" value="' + escapeHtml(attr.rfp_key) + '">' +
+            '<span class="xcom-settings-attr-sep">↔</span>' +
+            '<input class="xcom-settings-input xcom-settings-weight-sku" type="text" placeholder="Колонка SKU" value="' + escapeHtml(attr.sku_key) + '">' +
+            '<input class="xcom-settings-input xcom-settings-weight-value" type="number" min="0" max="1" step="0.05" aria-label="Вес" value="' + escapeHtml(attr.weight) + '">' +
+            '<button class="xcom-settings-btn xcom-settings-btn-danger xcom-settings-weight-remove" type="button" title="Убрать вес">×</button>';
+        row.querySelector('.xcom-settings-weight-remove').addEventListener('click', function() {
+            row.parentNode.removeChild(row);
+        });
+        return row;
+    }
+
+    function renderPresetOptions(selected) {
+        var select = document.getElementById('xcom-settings-preset');
+        if (!select) return;
+        select.innerHTML = '<option value="">Без пресета</option>';
+        var presets = window.XcomMatchingPresets && window.XcomMatchingPresets.presets || [];
+        presets.forEach(function(preset) {
+            var option = document.createElement('option');
+            option.value = preset.id;
+            option.textContent = preset.name + (preset.status === 'starter' ? ' (стартовый)' : '');
+            select.appendChild(option);
+        });
+        select.value = selected || '';
+    }
+
     function renderForm() {
         var form = formFromConfig(state.config);
+        var category = document.getElementById('xcom-settings-category');
+        if (category) category.value = form.category || '';
+        renderPresetOptions(form.preset || '');
         var weight = document.getElementById('xcom-settings-tma-weight');
         if (weight) weight.value = String(form.tma_weight);
         var list = document.getElementById('xcom-settings-attrs-list');
@@ -114,6 +186,18 @@
                 list.appendChild(attrRow(attr));
             });
         }
+        var weights = document.getElementById('xcom-settings-weights-list');
+        if (weights) {
+            weights.innerHTML = '';
+            (form.attribute_weights || []).forEach(function(attr) { weights.appendChild(weightRow(attr)); });
+        }
+        var llm = form.llm || { enabled: false, gray_zone_min: 45, gray_zone_max: 75 };
+        var llmEnabled = document.getElementById('xcom-settings-llm-enabled');
+        var llmMin = document.getElementById('xcom-settings-llm-min');
+        var llmMax = document.getElementById('xcom-settings-llm-max');
+        if (llmEnabled) llmEnabled.checked = !!llm.enabled;
+        if (llmMin) llmMin.value = isFinite(llm.gray_zone_min) ? String(llm.gray_zone_min) : '45';
+        if (llmMax) llmMax.value = isFinite(llm.gray_zone_max) ? String(llm.gray_zone_max) : '75';
     }
 
     function collectForm() {
@@ -125,7 +209,33 @@
             var sku = row.querySelector('.xcom-settings-attr-sku');
             attrs.push({ rfp_key: rfp ? rfp.value : '', sku_key: sku ? sku.value : '' });
         });
-        return configFromForm({ tma_weight: weight ? weight.value : 0.5, required_attributes: attrs });
+        var weighted = [];
+        Array.prototype.forEach.call(document.querySelectorAll('#xcom-settings-weights-list .xcom-settings-weight-row') || [], function(row) {
+            weighted.push({
+                rfp_key: row.querySelector('.xcom-settings-weight-rfp').value,
+                sku_key: row.querySelector('.xcom-settings-weight-sku').value,
+                weight: row.querySelector('.xcom-settings-weight-value').value
+            });
+        });
+        var category = document.getElementById('xcom-settings-category');
+        var preset = document.getElementById('xcom-settings-preset');
+        var llmEnabled = document.getElementById('xcom-settings-llm-enabled');
+        var llmMin = document.getElementById('xcom-settings-llm-min');
+        var llmMax = document.getElementById('xcom-settings-llm-max');
+        var changed = configFromForm({
+            category: category ? category.value : '',
+            preset: preset ? preset.value : '',
+            tma_weight: weight ? weight.value : 0.5,
+            required_attributes: attrs,
+            attribute_weights: weighted,
+            llm: {
+                enabled: llmEnabled ? llmEnabled.checked : false,
+                gray_zone_min: llmMin ? llmMin.value : 45,
+                gray_zone_max: llmMax ? llmMax.value : 75
+            }
+        });
+        var merge = window.XcomMassMatchWorkspace && window.XcomMassMatchWorkspace.mergeMatchingConfig;
+        return merge ? merge(state.config || {}, changed) : changed;
     }
 
     // --- HTTP ------------------------------------------------------------------
@@ -262,6 +372,21 @@
             var list = document.getElementById('xcom-settings-attrs-list');
             if (list) list.appendChild(attrRow({ rfp_key: '', sku_key: '' }));
         });
+        var addWeight = document.getElementById('xcom-settings-add-weight');
+        if (addWeight) addWeight.addEventListener('click', function() {
+            var list = document.getElementById('xcom-settings-weights-list');
+            if (list) list.appendChild(weightRow({ rfp_key: '', sku_key: '', weight: 0.1 }));
+        });
+        var preset = document.getElementById('xcom-settings-preset');
+        if (preset) preset.addEventListener('change', function() {
+            if (!preset.value) return;
+            var presets = window.XcomMatchingPresets;
+            var selected = presets && presets.findPreset(preset.value);
+            if (!selected) return;
+            state.config = presets.applyPreset(state.config || {}, selected);
+            renderForm();
+            setStatus('Пресет применён к форме. Проверьте обязательные атрибуты и нажмите «Сохранить».');
+        });
     }
 
     function init() {
@@ -275,6 +400,7 @@
     window.XcomMatchingSettingsWorkspace = {
         formFromConfig: formFromConfig,
         configFromForm: configFromForm,
+        weightRow: weightRow,
         init: init
     };
 

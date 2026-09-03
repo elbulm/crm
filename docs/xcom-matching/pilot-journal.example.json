@@ -1,0 +1,17 @@
+{
+  "target_minutes": 60,
+  "deployments": [
+    {
+      "id": "pilot-001",
+      "partner": "demo-integrator",
+      "category": "IT-техника",
+      "template_version": "1.0.0",
+      "started_at": "2026-09-01T09:00:00Z",
+      "first_run_at": "2026-09-01T09:42:00Z",
+      "author_tickets": 0,
+      "template_code_changed": false,
+      "classification": "configuration_only",
+      "notes": "Синтетический пример; заменить результатом наблюдаемого пилота."
+    }
+  ]
+}
