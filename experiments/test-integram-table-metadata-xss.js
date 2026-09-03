@@ -15,6 +15,8 @@ const urlConfig = read('14-url-config.js');
 const state = read('16-state.js');
 const refFilter = read('17-ref-filter.js');
 const columnSettings = read('11-column-settings.js');
+const utils = read('22-utils.js');
+const formFieldSettings = read('21-form-field-settings.js');
 const formSources = [
     read('07-inline-edit.js'),
     read('19-form-edit.js'),
@@ -51,6 +53,14 @@ assert(!renderTable.includes('data-column-id="${ column.id }"'),
     'filter column IDs must be escaped in DOM attributes');
 assert(!columnSettings.includes('data-column-id="${ col.id }"'),
     'column settings IDs must be escaped in DOM attributes');
+assert(columnSettings.includes('const refTypeId = this.normalizeNumericId(col.ref || col.orig || col.ref_id);'),
+    'column-edit dictionary links must validate reference type IDs');
+assert(columnSettings.includes('if (!col || !this.normalizeNumericId(col.id))'),
+    'column edit actions must reject invalid column IDs');
+assert(utils.includes('objId = this.normalizeNumericId(objId);'),
+    'warning record links must reject non-numeric object IDs');
+assert(formFieldSettings.includes('const escapedValue = this.escapeHtml(currentValue ||'),
+    'duplicate-value inputs must use complete HTML attribute escaping');
 assert(refFilter.includes('data-id="${this.escapeHtml(id)}"'),
     'reference filter option IDs must be escaped in DOM attributes');
 

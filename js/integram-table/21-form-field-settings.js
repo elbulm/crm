@@ -826,7 +826,7 @@
         showDuplicateUniqueValueModal(currentValue) {
             return new Promise((resolve) => {
                 const modalId = `duplicate-unique-${ Date.now() }`;
-                const escapedValue = String(currentValue || '').replace(/"/g, '&quot;');
+                const escapedValue = this.escapeHtml(currentValue || '');
                 const modalHtml = `
                     <div class="integram-modal-overlay" id="${ modalId }">
                         <div class="integram-modal" style="max-width: 440px;">

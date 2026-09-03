@@ -637,6 +637,7 @@
         }
 
         showWarningModal(message, objId = null) {
+            objId = this.normalizeNumericId(objId);
             const modalId = `warning-modal-${ Date.now() }`;
             const apiBase = this.getApiBase();
 

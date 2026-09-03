@@ -8471,10 +8471,15 @@ class IntegramTable{
          * Logic taken from templates/object.html.
          */
         showColumnEditForm(col) {
+            if (!col || !this.normalizeNumericId(col.id)) {
+                this.showToast('Некорректный идентификатор колонки', 'error');
+                return;
+            }
             const instanceName = this.options.instanceName;
             const apiBase = this.getApiBase();
             const parsedAttrs = this.parseAttrs(col.attrs);
-            const isRef = col.ref_id != null || (col.ref && col.ref !== 0);
+            const refTypeId = this.normalizeNumericId(col.ref || col.orig || col.ref_id);
+            const isRef = !!refTypeId && (col.ref_id != null || (col.ref && col.ref !== 0));
             const isFreeLink = String(col.type) === '1';
             const isMulti = parsedAttrs.multi;
             const isRequired = parsedAttrs.required;
@@ -8513,8 +8518,9 @@ class IntegramTable{
             const availableTypes = isFirstColumn ? firstColumnTypes : baseTypes;
 
             // If the column's current type is not in the list, add it so the select shows the correct value
-            if (!isRef && col.type && !availableTypes.find(t => String(t.id) === String(col.type))) {
-                availableTypes.push({ id: parseInt(col.type), name: `Тип #${ col.type }` });
+            const numericColType = this.normalizeNumericId(col.type);
+            if (!isRef && numericColType && !availableTypes.find(t => String(t.id) === numericColType)) {
+                availableTypes.push({ id: numericColType, name: `Тип #${ numericColType }` });
             }
 
             const colEditOverlay = document.createElement('div');
@@ -8534,8 +8540,7 @@ class IntegramTable{
             const currentName = col.val || col.name;
 
             // For reference columns, build a grey hyperlink to table/{ref} instead of an editable name input (issue #1435)
-            const refTypeId = col.ref || col.orig || col.ref_id;
-            const dbName = window.location.pathname.split('/')[1];
+            const dbName = encodeURIComponent(window.location.pathname.split('/')[1] || '');
             const refTableUrl = refTypeId ? `/${ dbName }/table/${ refTypeId }` : '#';
             const nameFieldHtml = isRef
                 ? `<a href="${ this.escapeHtml(refTableUrl) }" target="${ refTypeId }" rel="noopener noreferrer" style="color: grey;">${ this.escapeHtml(currentName) }</a>`
@@ -8553,7 +8558,7 @@ class IntegramTable{
                         <label class="col-edit-label">Базовый тип:</label>
                         ${ isFreeLink ? `<span class="col-edit-value">Свободная ссылка</span>`
                             : !isRef ? `<select id="col-edit-type-${instanceName}" class="form-control form-control-sm col-edit-select">
-                            ${ availableTypes.map(t => `<option value="${t.id}" ${ String(col.type) === String(t.id) ? 'selected' : '' }>${t.name}</option>`).join('') }
+                            ${ availableTypes.map(t => `<option value="${ this.escapeHtml(t.id) }" ${ String(col.type) === String(t.id) ? 'selected' : '' }>${ this.escapeHtml(t.name) }</option>`).join('') }
                         </select>` : `<span class="col-edit-value">Ссылочный тип (справочник)</span>` }
                     </div>
                     ${ isFirstColumn ? `<div class="col-edit-row">
@@ -17269,7 +17274,7 @@ class IntegramTable{
         showDuplicateUniqueValueModal(currentValue) {
             return new Promise((resolve) => {
                 const modalId = `duplicate-unique-${ Date.now() }`;
-                const escapedValue = String(currentValue || '').replace(/"/g, '&quot;');
+                const escapedValue = this.escapeHtml(currentValue || '');
                 const modalHtml = `
                     <div class="integram-modal-overlay" id="${ modalId }">
                         <div class="integram-modal" style="max-width: 440px;">
@@ -18086,6 +18091,7 @@ class IntegramTable{
         }
 
         showWarningModal(message, objId = null) {
+            objId = this.normalizeNumericId(objId);
             const modalId = `warning-modal-${ Date.now() }`;
             const apiBase = this.getApiBase();
 
