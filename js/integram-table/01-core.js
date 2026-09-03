@@ -749,7 +749,8 @@
                 let json;
                 let newRows = [];
 
-                if (this.getDataSourceType() === 'table') {
+                const dataSourceType = this.getDataSourceType();
+                if (dataSourceType === 'table') {
                     // Load data from table format (object/{typeId}/?JSON_OBJ&F_U={parentId}) (issue #697)
                     json = await this.loadDataFromTable(append);
                     if (isObsolete()) return;
@@ -763,6 +764,49 @@
                     }
                 }
 
+                const isGroupingMode = this.groupingEnabled && this.groupingColumns.length > 0;
+                if (isGroupingMode && json) {
+                    const groupingPageSize = 1000;
+                    const maximumGroupedRows = 1000000;
+                    const allRows = [];
+                    const allRawData = [];
+                    let groupedColumns = json.columns || [];
+                    let page = json;
+
+                    while (page) {
+                        let pageRows = Array.isArray(page.rows) ? page.rows : [];
+                        let pageRawData = Array.isArray(page.rawData) ? page.rawData : [];
+                        const pageHasMore = pageRows.length > groupingPageSize;
+                        if (pageHasMore) {
+                            pageRows = pageRows.slice(0, groupingPageSize);
+                            pageRawData = pageRawData.slice(0, groupingPageSize);
+                        }
+
+                        allRows.push(...pageRows);
+                        allRawData.push(...pageRawData);
+                        if (!pageHasMore) break;
+                        if (allRows.length >= maximumGroupedRows) {
+                            throw new Error(`Группировка ограничена ${ maximumGroupedRows } строками. Уточните фильтр.`);
+                        }
+
+                        // The data loaders calculate their offset from loadedRecords.
+                        // No page is rendered until the complete grouped set is ready.
+                        this.loadedRecords = allRows.length;
+                        this.columns = groupedColumns;
+                        page = dataSourceType === 'table'
+                            ? await this.loadDataFromTable(true)
+                            : await this.loadDataFromReport(true);
+                        if (isObsolete()) return;
+                        groupedColumns = page && page.columns ? page.columns : groupedColumns;
+                    }
+
+                    json = {
+                        ...json,
+                        columns: groupedColumns,
+                        rows: allRows,
+                        rawData: allRawData
+                    };
+                }
                 // The reload went through: whatever the data source was, the columns now
                 // describe the rows we are about to show, so the flag has done its job.
                 // Clearing it here also keeps report-shaped sources — which build their
@@ -787,20 +831,10 @@
                 newRows = json.rows || [];
                 this.columns = json.columns || [];
 
-                // In grouping mode, disable infinite scroll and use all data (up to 1000)
-                const isGroupingMode = this.groupingEnabled && this.groupingColumns.length > 0;
+                // Grouped pages have already been fully accumulated above. Ordinary
+                // table pages retain the existing pageSize + 1 look-ahead behavior.
+                this.hasMore = isGroupingMode ? false : newRows.length > this.options.pageSize;
 
-                // Check if there are more records (we requested pageSize + 1)
-                // In grouping mode, we fetched up to 1000 records at once
-                if (isGroupingMode) {
-                    // Grouping mode: no pagination, show all fetched data
-                    this.hasMore = false;
-                } else {
-                    this.hasMore = newRows.length > this.options.pageSize;
-                }
-
-                // Keep only pageSize records; also trim rawData to stay aligned
-                // In grouping mode, keep all data (up to 1000)
                 let rawData = json.rawData || [];
                 if (!isGroupingMode && this.hasMore) {
                     newRows = newRows.slice(0, this.options.pageSize);
@@ -1013,10 +1047,11 @@
 
         async loadDataFromReport(append = false) {
             // Original report-based data loading logic
-            // In grouping mode, use LIMIT=1000 and disable scrolling (issue #502)
+            // Grouping uses bounded 1,000-row pages with one look-ahead row.
             const isGroupingMode = this.groupingEnabled && this.groupingColumns.length > 0;
-            const requestSize = isGroupingMode ? 1000 : (this.options.pageSize + 1);
-            const offset = (append && !isGroupingMode) ? this.loadedRecords : 0;
+            const pageSize = isGroupingMode ? 1000 : this.options.pageSize;
+            const requestSize = pageSize + 1;
+            const offset = append ? this.loadedRecords : 0;
 
             const params = new URLSearchParams();
 
@@ -1249,10 +1284,11 @@
 
             this.objectTableId = this.options.tableTypeId;  // Store table ID for _count=1 queries
 
-            // In grouping mode, use LIMIT=1000 and disable scrolling (issue #502)
+            // Grouping uses bounded 1,000-row pages with one look-ahead row.
             const isGroupingMode = this.groupingEnabled && this.groupingColumns.length > 0;
-            const requestSize = isGroupingMode ? 1000 : (this.options.pageSize + 1);
-            const offset = (append && !isGroupingMode) ? this.loadedRecords : 0;
+            const pageSize = isGroupingMode ? 1000 : this.options.pageSize;
+            const requestSize = pageSize + 1;
+            const offset = append ? this.loadedRecords : 0;
 
             // First load, fetch metadata to get column information
             if (this.columns.length === 0) {

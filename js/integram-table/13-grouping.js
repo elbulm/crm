@@ -83,7 +83,7 @@
                 this.groupingColumns = [...selectedOrder];
                 this.groupingEnabled = this.groupingColumns.length > 0;
 
-                // If grouping is enabled, reload data with LIMIT=1000
+                // If grouping is enabled, reload all matching data in bounded pages
                 if (this.groupingEnabled) {
                     this.data = [];
                     this.loadedRecords = 0;
@@ -235,11 +235,18 @@
                 return String(displayA).toLowerCase().localeCompare(String(displayB).toLowerCase(), 'ru');
             };
 
-            // Sort data by grouping columns (using display values for reference fields)
-            const sortedData = [...this.data].sort((a, b) => {
+            // Sort row data together with raw record metadata. Keeping both arrays
+            // aligned is essential for editing, selection and bulk actions after the
+            // grouped view changes row order.
+            const hasAlignedRawData = Array.isArray(this.rawObjectData) &&
+                this.rawObjectData.length === this.data.length;
+            const sortedEntries = this.data.map((row, index) => ({
+                row,
+                raw: hasAlignedRawData ? this.rawObjectData[index] : null
+            })).sort((entryA, entryB) => {
                 for (const info of groupColInfo) {
-                    const valA = a[info.index];
-                    const valB = b[info.index];
+                    const valA = entryA.row[info.index];
+                    const valB = entryB.row[info.index];
 
                     // Issue #529: Use type-aware comparison
                     const comparison = compareGroupingValues(valA, valB, info.column);
@@ -247,6 +254,7 @@
                 }
                 return 0;
             });
+            const sortedData = sortedEntries.map(entry => entry.row);
 
             // Create grouped structure
             // Each row gets info about which group cells should be displayed (rowspan)
@@ -322,8 +330,11 @@
                 prevGroupDisplayValues = groupDisplayValues;
             });
 
-            // Replace data with sorted data for rendering
+            // Replace data with sorted data for rendering and keep record IDs aligned.
             this.data = sortedData;
+            if (hasAlignedRawData) {
+                this.rawObjectData = sortedEntries.map(entry => entry.raw);
+            }
         }
 
         hasActiveFilters() {
