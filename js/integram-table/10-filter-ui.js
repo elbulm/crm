@@ -146,6 +146,21 @@
             }
         }
 
+        resolveColumnDropPosition(draggedId, targetId, preferredPosition, orderedIds = this.columnOrder) {
+            const normalizedPosition = preferredPosition === 'after' ? 'after' : 'before';
+            const draggedIndex = orderedIds.indexOf(draggedId);
+            const targetIndex = orderedIds.indexOf(targetId);
+
+            if (draggedIndex === -1 || targetIndex === -1) return normalizedPosition;
+
+            // The near half of an adjacent target would otherwise resolve to the
+            // column's current position. Crossing into that neighbour should swap it.
+            if (normalizedPosition === 'before' && draggedIndex + 1 === targetIndex) return 'after';
+            if (normalizedPosition === 'after' && draggedIndex - 1 === targetIndex) return 'before';
+
+            return normalizedPosition;
+        }
+
         reorderColumns(draggedId, targetId, position = 'before') {
             const draggedIndex = this.columnOrder.indexOf(draggedId);
             const targetIndex = this.columnOrder.indexOf(targetId);

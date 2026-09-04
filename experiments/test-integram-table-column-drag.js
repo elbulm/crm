@@ -88,6 +88,18 @@ check('same-position move has no persistence or render side effects',
 check('fixed first column cannot move', table.reorderColumns('fixed', 'b', 'after') === false);
 check('nothing can be dropped onto the fixed first column', table.reorderColumns('b', 'fixed', 'before') === false);
 
+table = makeTable(['fixed', 'a', 'b', 'c']);
+check('near half of the adjacent right target resolves to a swap',
+    table.resolveColumnDropPosition('a', 'b', 'before', table.columnOrder) === 'after');
+check('near half of the adjacent left target resolves to a swap',
+    table.resolveColumnDropPosition('b', 'a', 'after', table.columnOrder) === 'before');
+check('non-adjacent drop keeps its preferred side',
+    table.resolveColumnDropPosition('a', 'c', 'before', table.columnOrder) === 'before');
+const adjacentPosition = table.resolveColumnDropPosition('a', 'b', 'before', table.columnOrder);
+check('adjacent near-edge gesture swaps the two columns',
+    table.reorderColumns('a', 'b', adjacentPosition) === true &&
+    JSON.stringify(table.columnOrder) === JSON.stringify(['fixed', 'b', 'a', 'c']));
+
 check('headers use a dedicated draggable button',
     render.includes('class="column-drag-handle" draggable="true"') &&
     cells.includes('class="column-drag-handle" draggable="true"'));
@@ -95,6 +107,9 @@ check('header cells themselves are no longer draggable',
     !/<th data-column-id="[^"]*" draggable="true"/.test(render + cells));
 check('drop side follows the horizontal midpoint',
     interactions.includes("event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before'"));
+check('adjacent no-op zones are resolved in table and settings',
+    interactions.includes('this.resolveColumnDropPosition(') &&
+    settings.includes('this.resolveColumnDropPosition('));
 check('quick drops are accepted from dragenter and dragover',
     interactions.includes("addEventListener('dragenter', updateDropTarget)") &&
     interactions.includes("addEventListener('dragover', updateDropTarget)"));

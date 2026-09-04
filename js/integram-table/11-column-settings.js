@@ -186,7 +186,13 @@
             };
             const getSettingsDropPosition = (event, target) => {
                 const rect = target.getBoundingClientRect();
-                return event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+                const preferredPosition = event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+                return this.resolveColumnDropPosition(
+                    dragItem && dragItem.dataset.columnId,
+                    target.dataset.columnId,
+                    preferredPosition,
+                    this.columnOrder
+                );
             };
             const placeSettingsItem = (item, target, position) => {
                 if (position === 'after') columnList.insertBefore(item, target.nextSibling);

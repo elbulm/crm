@@ -285,9 +285,16 @@
                     el.classList.remove('drag-over-before', 'drag-over-after');
                 });
             };
-            const getDropPosition = (event, th) => {
+            const getDropPosition = (event, th, draggedId) => {
                 const rect = th.getBoundingClientRect();
-                return event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before';
+                const preferredPosition = event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before';
+                const visibleOrder = this.columnOrder.filter(id => this.visibleColumns.includes(id));
+                return this.resolveColumnDropPosition(
+                    draggedId,
+                    th.dataset.columnId,
+                    preferredPosition,
+                    visibleOrder
+                );
             };
             const showDropPosition = (th, position) => {
                 clearColumnDragIndicators();
@@ -431,7 +438,7 @@
                         this._columnDragState.position = null;
                         return;
                     }
-                    const position = getDropPosition(event, target);
+                    const position = getDropPosition(event, target, columnId);
                     this._columnDragState.targetId = targetId;
                     this._columnDragState.position = position;
                     showDropPosition(target, position);
@@ -450,7 +457,7 @@
                     if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return false;
                     event.preventDefault();
                     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-                    const position = getDropPosition(event, th);
+                    const position = getDropPosition(event, th, dragState.draggedId);
                     dragState.targetId = columnId;
                     dragState.position = position;
                     showDropPosition(th, position);
@@ -471,7 +478,7 @@
                     if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return;
                     event.preventDefault();
                     event.stopPropagation();
-                    const position = getDropPosition(event, th);
+                    const position = getDropPosition(event, th, dragState.draggedId);
                     clearColumnDragIndicators();
                     this.reorderColumns(dragState.draggedId, columnId, position);
                     this._columnDragState = null;

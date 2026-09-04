@@ -4766,9 +4766,16 @@ class IntegramTable{
                     el.classList.remove('drag-over-before', 'drag-over-after');
                 });
             };
-            const getDropPosition = (event, th) => {
+            const getDropPosition = (event, th, draggedId) => {
                 const rect = th.getBoundingClientRect();
-                return event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before';
+                const preferredPosition = event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before';
+                const visibleOrder = this.columnOrder.filter(id => this.visibleColumns.includes(id));
+                return this.resolveColumnDropPosition(
+                    draggedId,
+                    th.dataset.columnId,
+                    preferredPosition,
+                    visibleOrder
+                );
             };
             const showDropPosition = (th, position) => {
                 clearColumnDragIndicators();
@@ -4912,7 +4919,7 @@ class IntegramTable{
                         this._columnDragState.position = null;
                         return;
                     }
-                    const position = getDropPosition(event, target);
+                    const position = getDropPosition(event, target, columnId);
                     this._columnDragState.targetId = targetId;
                     this._columnDragState.position = position;
                     showDropPosition(target, position);
@@ -4931,7 +4938,7 @@ class IntegramTable{
                     if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return false;
                     event.preventDefault();
                     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-                    const position = getDropPosition(event, th);
+                    const position = getDropPosition(event, th, dragState.draggedId);
                     dragState.targetId = columnId;
                     dragState.position = position;
                     showDropPosition(th, position);
@@ -4952,7 +4959,7 @@ class IntegramTable{
                     if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return;
                     event.preventDefault();
                     event.stopPropagation();
-                    const position = getDropPosition(event, th);
+                    const position = getDropPosition(event, th, dragState.draggedId);
                     clearColumnDragIndicators();
                     this.reorderColumns(dragState.draggedId, columnId, position);
                     this._columnDragState = null;
@@ -8519,6 +8526,21 @@ class IntegramTable{
             }
         }
 
+        resolveColumnDropPosition(draggedId, targetId, preferredPosition, orderedIds = this.columnOrder) {
+            const normalizedPosition = preferredPosition === 'after' ? 'after' : 'before';
+            const draggedIndex = orderedIds.indexOf(draggedId);
+            const targetIndex = orderedIds.indexOf(targetId);
+
+            if (draggedIndex === -1 || targetIndex === -1) return normalizedPosition;
+
+            // The near half of an adjacent target would otherwise resolve to the
+            // column's current position. Crossing into that neighbour should swap it.
+            if (normalizedPosition === 'before' && draggedIndex + 1 === targetIndex) return 'after';
+            if (normalizedPosition === 'after' && draggedIndex - 1 === targetIndex) return 'before';
+
+            return normalizedPosition;
+        }
+
         reorderColumns(draggedId, targetId, position = 'before') {
             const draggedIndex = this.columnOrder.indexOf(draggedId);
             const targetIndex = this.columnOrder.indexOf(targetId);
@@ -8781,7 +8803,13 @@ class IntegramTable{
             };
             const getSettingsDropPosition = (event, target) => {
                 const rect = target.getBoundingClientRect();
-                return event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+                const preferredPosition = event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+                return this.resolveColumnDropPosition(
+                    dragItem && dragItem.dataset.columnId,
+                    target.dataset.columnId,
+                    preferredPosition,
+                    this.columnOrder
+                );
             };
             const placeSettingsItem = (item, target, position) => {
                 if (position === 'after') columnList.insertBefore(item, target.nextSibling);
