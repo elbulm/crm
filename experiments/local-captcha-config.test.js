@@ -146,6 +146,8 @@ async function run() {
         'local page does not eagerly load the third-party CAPTCHA script');
     assert(!/data-sitekey=/i.test(startSrc),
         'static HTML no longer hardcodes the CAPTCHA site key');
+    assert(/src="js\/app\.js\?v=20260904-1"/.test(startSrc),
+        'login script URL is versioned so open browsers cannot reuse the pre-fix file');
 
     console.log('\n' + (failures === 0 ? 'ALL TESTS PASSED' : failures + ' TEST(S) FAILED'));
     process.exit(failures === 0 ? 0 : 1);
