@@ -163,8 +163,8 @@
         <header class="preview-header">
             <div>
                 <p class="preview-kicker">IntegramTable · Impeccable polish</p>
-                <h1>Рабочая таблица без визуального шума</h1>
-                <p class="preview-summary">Интерактивный предпросмотр новой иерархии, адаптивной панели, клавиатурного фокуса, состояний загрузки и доступных модальных окон.</p>
+                <h1>Стресс-тест большой рабочей таблицы</h1>
+                <p class="preview-summary">487 записей и 24 столбца для проверки горизонтальной прокрутки, перетаскивания на краях, постраничной загрузки и сложных значений.</p>
             </div>
             <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
                 <i class="pi pi-moon" aria-hidden="true"></i>
@@ -178,45 +178,114 @@
             <button type="button" class="preview-action" id="show-loading"><i class="pi pi-spin pi-spinner" aria-hidden="true"></i>Загрузка</button>
             <button type="button" class="preview-action" id="show-settings"><i class="pi pi-sliders-h" aria-hidden="true"></i>Настройки</button>
             <button type="button" class="preview-action" id="show-toast"><i class="pi pi-check-circle" aria-hidden="true"></i>Уведомление</button>
-            <span class="preview-status" id="preview-status" role="status">Готово к проверке</span>
+            <span class="preview-status" id="preview-status" role="status">487 строк · 24 столбца · по 50 за запрос</span>
         </section>
 
         <section class="preview-card" aria-label="Предпросмотр таблицы">
             <div id="polish-preview-table"></div>
         </section>
-        <p class="preview-note">Подсказка: включите фильтры в панели таблицы, откройте экспорт или пройдите по интерфейсу клавишей Tab.</p>
+        <p class="preview-note">Проверьте крайние столбцы, длинные значения и докрутку до записи № 487. В последней порции останется 37 строк.</p>
     </main>
 
     <script>
-        const previewRows = [
-            ['1048', '1047', '1046', '1045', '1044', '1043'],
-            ['Альфа Электро', 'СеверТех', 'Меридиан', 'ПромСнаб', 'Нева Трейд', 'Вектор'],
-            ['Кабель ВВГнг 3×2,5', 'Автомат 16А', 'Светильник LED 36Вт', 'Розетка IP44', 'Гофра ПВХ 20 мм', 'Щит распределительный'],
-            ['Сопоставлено', 'Требует проверки', 'Сопоставлено', 'Новый', 'Требует проверки', 'Сопоставлено'],
-            ['18450', '7280', '12990', '3150', '5640', '24800'],
-            ['04.09.2026', '04.09.2026', '03.09.2026', '03.09.2026', '02.09.2026', '02.09.2026']
-        ];
-
         const previewColumns = [
             { id: '101', name: 'ID', type: 'CHARS', format: 'CHARS', orig: '101' },
             { id: '102', name: 'Поставщик', type: 'CHARS', format: 'CHARS', orig: '102' },
             { id: '103', name: 'Позиция каталога', type: 'CHARS', format: 'CHARS', orig: '103' },
             { id: '104', name: 'Статус', type: 'CHARS', format: 'CHARS', orig: '104' },
             { id: '105', name: 'Сумма, ₽', type: 'NUMBER', format: 'NUMBER', orig: '105' },
-            { id: '106', name: 'Обновлено', type: 'DATE', format: 'DATE', orig: '106' }
+            { id: '106', name: 'Обновлено', type: 'DATE', format: 'DATE', orig: '106' },
+            { id: '107', name: 'Артикул поставщика', type: 'CHARS', format: 'CHARS', orig: '107' },
+            { id: '108', name: 'Категория', type: 'CHARS', format: 'CHARS', orig: '108' },
+            { id: '109', name: 'Бренд', type: 'CHARS', format: 'CHARS', orig: '109' },
+            { id: '110', name: 'Код поставщика', type: 'CHARS', format: 'CHARS', orig: '110' },
+            { id: '111', name: 'Единица', type: 'CHARS', format: 'CHARS', orig: '111' },
+            { id: '112', name: 'В упаковке', type: 'NUMBER', format: 'NUMBER', orig: '112' },
+            { id: '113', name: 'Остаток', type: 'NUMBER', format: 'NUMBER', orig: '113' },
+            { id: '114', name: 'Совпадение, %', type: 'NUMBER', format: 'NUMBER', orig: '114' },
+            { id: '115', name: 'Цена с НДС, ₽', type: 'NUMBER', format: 'NUMBER', orig: '115' },
+            { id: '116', name: 'Отклонение, ₽', type: 'SIGNED', format: 'SIGNED', orig: '116' },
+            { id: '117', name: 'Ответственный', type: 'CHARS', format: 'CHARS', orig: '117' },
+            { id: '118', name: 'Склад', type: 'CHARS', format: 'CHARS', orig: '118' },
+            { id: '119', name: 'Способ сопоставления', type: 'CHARS', format: 'CHARS', orig: '119' },
+            { id: '120', name: 'Требует согласования', type: 'BOOLEAN', format: 'BOOLEAN', orig: '120' },
+            { id: '121', name: 'Комментарий оператора', type: 'MEMO', format: 'MEMO', orig: '121' },
+            { id: '122', name: 'Исходный файл', type: 'CHARS', format: 'CHARS', orig: '122' },
+            { id: '123', name: 'Создано', type: 'DATETIME', format: 'DATETIME', orig: '123' },
+            { id: '124', name: 'Внешний идентификатор', type: 'CHARS', format: 'CHARS', orig: '124' }
         ];
+
+        const previewRecordCount = 487;
+        const suppliers = ['Альфа Электро', 'СеверТех', 'Меридиан', 'ПромСнаб', 'Нева Трейд', 'Вектор', 'Контур Комплект', 'ЭнергоОпт', 'Мастер Кабель', 'Точка Света', 'СтройРезерв', 'Партнёр 24'];
+        const products = ['Кабель ВВГнг 3×2,5', 'Автомат 16А', 'Светильник LED 36Вт', 'Розетка IP44', 'Гофра ПВХ 20 мм', 'Щит распределительный', 'Клемма проходная 2,5 мм²', 'Контактор модульный 25А', 'Датчик движения потолочный', 'Лоток перфорированный 100×50', 'Выключатель двухклавишный', 'Трансформатор тока 400/5'];
+        const categories = ['Кабель', 'Автоматика', 'Освещение', 'Электроустановка', 'Монтаж', 'Щитовое оборудование', 'Крепёж', 'Инструмент'];
+        const brands = ['ЭРА', 'IEK', 'EKF', 'Legrand', 'Schneider Electric', 'DKC', 'КЭАЗ', 'без бренда'];
+        const statuses = ['Сопоставлено', 'Требует проверки', 'Новый', 'Отклонено', 'На согласовании'];
+        const managers = ['Анна Петрова', 'Михаил Орлов', 'Елена Ким', 'Илья Сафронов', 'Ольга Лебедева', 'Не назначен'];
+        const warehouses = ['Москва · Север', 'Москва · Юг', 'Санкт-Петербург', 'Казань', 'Екатеринбург', 'Новосибирск'];
+        const matchMethods = ['Точное по артикулу', 'По названию и бренду', 'Предложено моделью', 'Выбрано оператором'];
+
+        const formatPreviewDate = date => {
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            return `${ day }.${ month }.${ date.getUTCFullYear() }`;
+        };
+
+        const previewRecords = Array.from({ length: previewRecordCount }, (_, index) => {
+            const sequence = index + 1;
+            const updatedAt = new Date(Date.UTC(2026, 8, 4) - (index % 46) * 86400000);
+            const createdAt = new Date(Date.UTC(2026, 6, 1, 8, 15) + index * 937000);
+            const baseProduct = products[index % products.length];
+            const productName = index % 61 === 0
+                ? `${ baseProduct } · специальная комплектация с очень длинным наименованием для проверки переноса, обрезки и горизонтальной прокрутки`
+                : baseProduct;
+            const amount = index % 97 === 0 ? 0 : 3150 + (index * 1739) % 185000;
+            const vatPrice = Math.round(amount * 1.2);
+            const score = index % 43 === 0 ? 0 : 58 + (index * 7) % 43;
+            const comment = index % 37 === 0
+                ? 'Проверить маркировку <спецзаказ> & согласовать упаковку «Север» до выгрузки.'
+                : index % 5 === 0 ? '' : 'Расхождений по ключевым атрибутам нет';
+
+            return [
+                String(100000 + sequence),
+                index % 113 === 0 ? '' : suppliers[index % suppliers.length],
+                productName,
+                statuses[index % statuses.length],
+                String(amount),
+                formatPreviewDate(updatedAt),
+                index % 79 === 0 ? `ULTRA-LONG-SKU-${ String(sequence).padStart(6, '0') }-WITHOUT-BREAKS-TEST-EDGE-CASE` : `SKU-${ String(42000 + sequence).padStart(7, '0') }`,
+                categories[index % categories.length],
+                brands[index % brands.length],
+                `SUP-${ String((index * 17) % 100000).padStart(5, '0') }`,
+                ['шт.', 'м', 'компл.', 'упак.'][index % 4],
+                String([1, 5, 10, 20, 50][index % 5]),
+                String(index % 29 === 0 ? 0 : (index * 47) % 2400),
+                String(score),
+                String(vatPrice),
+                String(((index * 313) % 9200) - 4600),
+                managers[index % managers.length],
+                warehouses[index % warehouses.length],
+                matchMethods[index % matchMethods.length],
+                index % 7 === 0 ? '1' : '0',
+                comment,
+                `catalog_${ String((index % 12) + 1).padStart(2, '0') }_2026.xlsx`,
+                `${ formatPreviewDate(createdAt) } ${ String(createdAt.getUTCHours()).padStart(2, '0') }:${ String(createdAt.getUTCMinutes()).padStart(2, '0') }:00`,
+                `EXT-RU-${ String(900000000000 + sequence) }`
+            ];
+        });
 
         let previewMode = 'data';
         let previewDelay = 260;
         const status = document.getElementById('preview-status');
 
         window.fetch = (url) => new Promise(resolve => {
-            const isCount = /RECORD_COUNT=1|_count=1/.test(url);
-            const isMetadata = /\/metadata$/.test(url);
+            const requestUrl = new URL(String(url), window.location.origin);
+            const isCount = requestUrl.searchParams.has('RECORD_COUNT') || requestUrl.searchParams.has('_count');
+            const isMetadata = /\/metadata$/.test(requestUrl.pathname);
             const delay = previewMode === 'loading' ? 2400 : previewDelay;
             window.setTimeout(() => {
                 if (isCount) {
-                    resolve(new Response(JSON.stringify({ count: previewMode === 'empty' ? 0 : 6 }), {
+                    resolve(new Response(JSON.stringify({ count: previewMode === 'empty' ? 0 : previewRecordCount }), {
                         status: 200,
                         headers: { 'Content-Type': 'application/json' }
                     }));
@@ -226,7 +295,14 @@
                     resolve(new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }));
                     return;
                 }
-                const data = previewMode === 'empty' ? previewRows.map(() => []) : previewRows;
+                const [offset, limit] = (requestUrl.searchParams.get('LIMIT') || '0,51')
+                    .split(',')
+                    .map(value => Math.max(0, Number.parseInt(value, 10) || 0));
+                const pageRecords = previewMode === 'empty'
+                    ? []
+                    : previewRecords.slice(offset, offset + limit);
+                const data = previewColumns.map((_, columnIndex) =>
+                    pageRecords.map(record => record[columnIndex]));
                 resolve(new Response(JSON.stringify({ columns: previewColumns, data }), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' }
@@ -240,7 +316,7 @@
             apiUrl: '/preview/report/42',
             instanceName: 'polishPreviewTable',
             title: 'Сопоставление каталога поставщика',
-            pageSize: 20
+            pageSize: 50
         });
 
         const refreshScenario = (mode, message) => {
@@ -249,7 +325,7 @@
             window.polishPreviewTable.refreshData();
         };
 
-        document.getElementById('show-data').addEventListener('click', () => refreshScenario('data', 'Показаны рабочие данные'));
+        document.getElementById('show-data').addEventListener('click', () => refreshScenario('data', '487 строк · 24 столбца · по 50 за запрос'));
         document.getElementById('show-empty').addEventListener('click', () => refreshScenario('empty', 'Показано пустое состояние'));
         document.getElementById('show-loading').addEventListener('click', () => {
             refreshScenario('loading', 'Имитируется медленное соединение');
