@@ -3,7 +3,7 @@
             overlay.className = 'column-settings-overlay';
 
             const modal = document.createElement('div');
-            modal.className = 'column-settings-modal';
+            modal.className = 'column-settings-modal table-settings-modal';
             const instanceName = this.options.instanceName;
 
             modal.innerHTML = `

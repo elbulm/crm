@@ -64,7 +64,7 @@
                 const tableUrl = `/${dbName}/table/${safeTypeId}?F_U=${parentId}&F_I=${recordId}`;
 
                 recordIdHtml = `
-                    <span class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID">#${recordId}</span>
+                    <button type="button" class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID" aria-label="Скопировать ID ${recordId}">#${recordId}</button>
                     <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                         <i class="pi pi-table"></i>
                     </a>

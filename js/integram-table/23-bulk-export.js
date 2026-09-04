@@ -443,10 +443,22 @@
             if (!menu) return;
 
             const isVisible = menu.style.display !== 'none';
+            const trigger = event && event.currentTarget
+                ? event.currentTarget
+                : document.querySelector(`[aria-controls="${ menuId }"]`);
 
-            // Hide all export menus first
+            const removeOutsideHandler = targetMenu => {
+                if (!targetMenu || !targetMenu._integramExportCloseHandler) return;
+                document.removeEventListener('click', targetMenu._integramExportCloseHandler);
+                targetMenu._integramExportCloseHandler = null;
+            };
+
+            // Keep visual and assistive states in sync across every table instance.
             document.querySelectorAll('.integram-export-menu').forEach(m => {
+                removeOutsideHandler(m);
                 m.style.display = 'none';
+                const owner = document.querySelector(`[aria-controls="${ m.id }"]`);
+                if (owner) owner.setAttribute('aria-expanded', 'false');
             });
 
             if (!isVisible) {
@@ -457,9 +469,7 @@
                 }
 
                 // Position the menu below the button using fixed coordinates.
-                const btn = event && event.currentTarget
-                    ? event.currentTarget
-                    : document.querySelector(`#${ menuId }`)?.previousElementSibling;
+                const btn = trigger;
                 if (btn) {
                     const rect = btn.getBoundingClientRect();
                     menu.style.position = 'fixed';
@@ -469,17 +479,42 @@
                 }
 
                 menu.style.display = 'block';
+                if (trigger) trigger.setAttribute('aria-expanded', 'true');
 
-                // Close menu when clicking outside
-                setTimeout(() => {
-                    const closeHandler = (e) => {
-                        if (!menu.contains(e.target) && !e.target.closest('.integram-table-export-container')) {
-                            menu.style.display = 'none';
-                            document.removeEventListener('click', closeHandler);
+                const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+                menu.onkeydown = (keyboardEvent) => {
+                    const currentIndex = items.indexOf(document.activeElement);
+                    if (keyboardEvent.key === 'Escape') {
+                        keyboardEvent.preventDefault();
+                        menu.style.display = 'none';
+                        removeOutsideHandler(menu);
+                        if (trigger) {
+                            trigger.setAttribute('aria-expanded', 'false');
+                            trigger.focus();
                         }
-                    };
-                    document.addEventListener('click', closeHandler);
-                }, 0);
+                    } else if (keyboardEvent.key === 'ArrowDown' || keyboardEvent.key === 'ArrowUp') {
+                        keyboardEvent.preventDefault();
+                        const direction = keyboardEvent.key === 'ArrowDown' ? 1 : -1;
+                        const nextIndex = currentIndex < 0
+                            ? (direction > 0 ? 0 : items.length - 1)
+                            : (currentIndex + direction + items.length) % items.length;
+                        if (items[nextIndex]) items[nextIndex].focus();
+                    }
+                };
+                if (event && event.detail === 0 && items[0]) items[0].focus();
+
+                // Close menu when clicking outside. The current trigger click is ignored
+                // because its target still belongs to .integram-table-export-container.
+                const closeHandler = (outsideEvent) => {
+                    if (!menu.contains(outsideEvent.target) && !outsideEvent.target.closest('.integram-table-export-container')) {
+                        menu.style.display = 'none';
+                        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+                        document.removeEventListener('click', closeHandler);
+                        menu._integramExportCloseHandler = null;
+                    }
+                };
+                menu._integramExportCloseHandler = closeHandler;
+                document.addEventListener('click', closeHandler);
             }
         }
 
@@ -494,6 +529,12 @@
             const menu = document.getElementById(menuId);
             if (menu) {
                 menu.style.display = 'none';
+                if (menu._integramExportCloseHandler) {
+                    document.removeEventListener('click', menu._integramExportCloseHandler);
+                    menu._integramExportCloseHandler = null;
+                }
+                const trigger = document.querySelector(`[aria-controls="${ menuId }"]`);
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
             }
 
             try {
@@ -995,6 +1036,12 @@
             const menu = document.getElementById(menuId);
             if (menu) {
                 menu.style.display = 'none';
+                if (menu._integramExportCloseHandler) {
+                    document.removeEventListener('click', menu._integramExportCloseHandler);
+                    menu._integramExportCloseHandler = null;
+                }
+                const trigger = document.querySelector(`[aria-controls="${ menuId }"]`);
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
             }
 
             try {

@@ -769,9 +769,9 @@
          */
         renderCheckboxToggleHtml() {
             const instanceName = this.options.instanceName;
-            return `<div class="integram-table-checkbox-toggle${ this.checkboxMode ? ' active' : '' }" onclick="window.${ instanceName }.toggleCheckboxMode()" title="Выбор строк в таблице">
+            return `<button type="button" class="integram-table-checkbox-toggle${ this.checkboxMode ? ' active' : '' }" onclick="window.${ instanceName }.toggleCheckboxMode()" title="Выбор строк в таблице" aria-label="Режим выбора строк" aria-pressed="${ this.checkboxMode ? 'true' : 'false' }">
                 <i class="pi pi-check-square"></i>
-            </div>`;
+            </button>`;
         }
 
         /**

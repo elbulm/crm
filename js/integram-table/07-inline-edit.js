@@ -2969,7 +2969,7 @@
                     const editIconOnclick = isAnyRefCell
                         ? `window.${ instanceName }.openAnyRefEditForm('${ editRecordId }', ${ editRowIndex }); event.stopPropagation();`
                         : `window.${ instanceName }.openEditForm('${ editRecordId }', '${ editTypeId }', ${ editRowIndex }); event.stopPropagation();`;
-                    const editIcon = `<span class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></span>`;
+                    const editIcon = `<button type="button" class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать" aria-label="Редактировать значение"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></button>`;
                     cell.innerHTML = `<div class="cell-content-wrapper"><span title="${ editRecordId }">${ escapedValue }</span>${ editIcon }</div>`;
                     // Issue #4385: keep the ID readable on the parent cell when the edit icon covers the wrapper
                     if (editRecordId) { cell.setAttribute('title', editRecordId); }

@@ -17,7 +17,8 @@
 const itModalEscapeState = {
     stack: [],
     keydownHandler: null,
-    cleanupByModal: new WeakMap()
+    cleanupByModal: new WeakMap(),
+    nextLabelId: 1
 };
 
 function itAddModalDocumentListener(modal, type, handler, options) {
@@ -46,6 +47,30 @@ function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
     let active = true;
     let observer = null;
     const entry = { modal, close: null, unregister: null };
+    const previouslyFocused = document.activeElement;
+    const dialogSelector = '.edit-form-modal, .column-settings-modal, .grouping-settings-modal, .form-field-settings-modal, .integram-modal, .col-edit-modal, [role="dialog"]';
+    const dialog = modal.matches && modal.matches(dialogSelector)
+        ? modal
+        : (modal.querySelector ? modal.querySelector(dialogSelector) : null);
+
+    entry.dialog = dialog;
+    if (dialog) {
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        if (!dialog.hasAttribute('tabindex')) dialog.setAttribute('tabindex', '-1');
+        const heading = dialog.querySelector('h1, h2, h3, .modal-title');
+        if (heading) {
+            if (!heading.id) {
+                heading.id = `integram-modal-title-${ itModalEscapeState.nextLabelId++ }`;
+            }
+            dialog.setAttribute('aria-labelledby', heading.id);
+        } else if (!dialog.hasAttribute('aria-label')) {
+            dialog.setAttribute('aria-label', 'Диалоговое окно');
+        }
+    }
+    if (document.body && document.body.classList && typeof document.body.classList.add === 'function') {
+        document.body.classList.add('integram-modal-open');
+    }
 
     const unregister = () => {
         if (!active) return;
@@ -57,16 +82,34 @@ function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
         if (owner && owner._modalCloseHandlers) owner._modalCloseHandlers.delete(close);
         const index = itModalEscapeState.stack.indexOf(entry);
         if (index !== -1) itModalEscapeState.stack.splice(index, 1);
-        if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {
-            document.removeEventListener('keydown', itModalEscapeState.keydownHandler);
-            itModalEscapeState.keydownHandler = null;
+        if (itModalEscapeState.stack.length === 0) {
+            if (itModalEscapeState.keydownHandler) {
+                document.removeEventListener('keydown', itModalEscapeState.keydownHandler);
+                itModalEscapeState.keydownHandler = null;
+            }
+            if (document.body && document.body.classList && typeof document.body.classList.remove === 'function') {
+                document.body.classList.remove('integram-modal-open');
+            }
         }
     };
 
     const close = (...args) => {
         if (!active) return;
         unregister();
-        return closeCallback(...args);
+        const result = closeCallback(...args);
+        const restoreFocus = () => {
+            if (previouslyFocused && previouslyFocused.isConnected && typeof previouslyFocused.focus === 'function') {
+                try {
+                    previouslyFocused.focus({ preventScroll: true });
+                } catch (error) {
+                    previouslyFocused.focus();
+                }
+            }
+        };
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreFocus);
+        else if (typeof setTimeout === 'function') setTimeout(restoreFocus, 0);
+        else restoreFocus();
+        return result;
     };
 
     if (owner) {
@@ -80,19 +123,61 @@ function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
 
     if (!itModalEscapeState.keydownHandler) {
         itModalEscapeState.keydownHandler = (event) => {
-            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            if (event.defaultPrevented) return;
             while (itModalEscapeState.stack.length > 0) {
                 const top = itModalEscapeState.stack[itModalEscapeState.stack.length - 1];
                 if (!itIsModalConnected(top.modal)) {
                     top.unregister();
                     continue;
                 }
-                top.close();
-                break;
+
+                if (event.key === 'Escape') {
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
+                    top.close();
+                    return;
+                }
+
+                if (event.key === 'Tab') {
+                    const dialogElement = top.dialog || top.modal;
+                    const candidates = Array.from(dialogElement.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                        .filter(element => !element.disabled && element.getAttribute('aria-hidden') !== 'true' && element.offsetParent !== null);
+                    if (candidates.length === 0) {
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (typeof dialogElement.focus === 'function') dialogElement.focus();
+                        return;
+                    }
+                    const first = candidates[0];
+                    const last = candidates[candidates.length - 1];
+                    if (event.shiftKey && (document.activeElement === first || !dialogElement.contains(document.activeElement))) {
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && (document.activeElement === last || !dialogElement.contains(document.activeElement))) {
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        first.focus();
+                    }
+                    return;
+                }
+                return;
             }
         };
         document.addEventListener('keydown', itModalEscapeState.keydownHandler);
     }
+
+    const focusDialog = () => {
+        if (!active || !dialog || !itIsModalConnected(modal) || dialog.contains(document.activeElement)) return;
+        const autofocus = dialog.querySelector('[autofocus]');
+        const target = autofocus || dialog;
+        if (typeof target.focus === 'function') {
+            try {
+                target.focus({ preventScroll: true });
+            } catch (error) {
+                target.focus();
+            }
+        }
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusDialog);
+    else if (typeof setTimeout === 'function') setTimeout(focusDialog, 0);
+    else focusDialog();
 
     if (typeof MutationObserver !== 'undefined' && document.documentElement) {
         observer = new MutationObserver(() => {
@@ -876,9 +961,9 @@ class IntegramTable{
          */
         renderCheckboxToggleHtml() {
             const instanceName = this.options.instanceName;
-            return `<div class="integram-table-checkbox-toggle${ this.checkboxMode ? ' active' : '' }" onclick="window.${ instanceName }.toggleCheckboxMode()" title="Выбор строк в таблице">
+            return `<button type="button" class="integram-table-checkbox-toggle${ this.checkboxMode ? ' active' : '' }" onclick="window.${ instanceName }.toggleCheckboxMode()" title="Выбор строк в таблице" aria-label="Режим выбора строк" aria-pressed="${ this.checkboxMode ? 'true' : 'false' }">
                 <i class="pi pi-check-square"></i>
-            </div>`;
+            </button>`;
         }
 
         /**
@@ -2308,79 +2393,79 @@ class IntegramTable{
                                 <i class="pi pi-spin pi-spinner"></i>
                                 <span class="integram-table-ajax-spinner-counter">${ (this.pendingRequests || 0) > 1 ? `(${ this.pendingRequests })` : '' }</span>
                             </div>
-                            <div class="integram-table-settings integram-table-settings-refresh" onclick="window.${ instanceName }.refreshData()" title="Обновить">
+                            <button type="button" class="integram-table-settings integram-table-settings-refresh" onclick="window.${ instanceName }.refreshData()" title="Обновить" aria-label="Обновить">
                                 <i class="pi pi-refresh"></i>
-                            </div>
+                            </button>
                             ${ this.groupingEnabled ? `
-                            <div class="integram-table-settings" onclick="window.${ instanceName }.clearGrouping()" title="Очистить группировку">
+                            <button type="button" class="integram-table-settings" onclick="window.${ instanceName }.clearGrouping()" title="Очистить группировку" aria-label="Очистить группировку">
                                 <i class="pi pi-undo"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">очистить</span>' : '' }
-                            </div>
+                            </button>
                             ` : '' }
-                            <div class="integram-table-settings${ this.groupingEnabled ? ' active' : '' }" onclick="window.${ instanceName }.openGroupingSettings()" title="Группы">
+                            <button type="button" class="integram-table-settings${ this.groupingEnabled ? ' active' : '' }" onclick="window.${ instanceName }.openGroupingSettings()" title="Группы" aria-label="Настроить группировку" aria-pressed="${ this.groupingEnabled ? 'true' : 'false' }">
                                 <i class="pi pi-objects-column"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">группы</span>' : '' }
-                            </div>
+                            </button>
                             ${ this.hasActiveFilters() ? `
-                            <div class="integram-table-settings" onclick="window.${ instanceName }.clearAllFilters()" title="Очистить фильтры">
+                            <button type="button" class="integram-table-settings" onclick="window.${ instanceName }.clearAllFilters()" title="Очистить фильтры" aria-label="Очистить фильтры">
                                 <i class="pi pi-filter-slash"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">очистить</span>' : '' }
-                            </div>
+                            </button>
                             ` : '' }
-                            <div class="integram-table-settings${ this.filtersEnabled ? ' active' : '' }" onclick="window.${ instanceName }.toggleFilters()" title="Фильтры">
+                            <button type="button" class="integram-table-settings${ this.filtersEnabled ? ' active' : '' }" onclick="window.${ instanceName }.toggleFilters()" title="Фильтры" aria-label="Показать фильтры" aria-pressed="${ this.filtersEnabled ? 'true' : 'false' }">
                                 <i class="pi pi-filter"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">фильтры</span>' : '' }
-                            </div>
+                            </button>
                             ${ this.isExportAllowed() ? `
                             <div class="integram-table-export-container">
-                                <div class="integram-table-settings" onclick="window.${ instanceName }.toggleExportMenu(event)" title="Экспорт">
+                                <button type="button" class="integram-table-settings" onclick="window.${ instanceName }.toggleExportMenu(event)" title="Экспорт" aria-label="Экспортировать данные" aria-haspopup="menu" aria-expanded="false" aria-controls="${ instanceName }-export-menu">
                                     <i class="pi pi-download"></i>
                                     ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">экспорт</span>' : '' }
-                                </div>
-                                <div class="integram-export-menu" id="${ instanceName }-export-menu" style="display: none;">
-                                    <div class="export-menu-item" onclick="window.${ instanceName }.exportTable('xlsx')">
+                                </button>
+                                <div class="integram-export-menu" id="${ instanceName }-export-menu" role="menu" aria-label="Варианты экспорта" style="display: none;">
+                                    <button type="button" class="export-menu-item" role="menuitem" onclick="window.${ instanceName }.exportTable('xlsx')">
                                         <span class="export-icon"><i class="pi pi-file-excel"></i></span> XLSX (Excel)
-                                    </div>
-                                    <div class="export-menu-item" onclick="window.${ instanceName }.exportTable('xls')">
+                                    </button>
+                                    <button type="button" class="export-menu-item" role="menuitem" onclick="window.${ instanceName }.exportTable('xls')">
                                         <span class="export-icon"><i class="pi pi-file-excel"></i></span> XLS (Excel 97-2003)
-                                    </div>
-                                    <div class="export-menu-item" onclick="window.${ instanceName }.exportTable('csv')">
+                                    </button>
+                                    <button type="button" class="export-menu-item" role="menuitem" onclick="window.${ instanceName }.exportTable('csv')">
                                         <span class="export-icon"><i class="pi pi-file"></i></span> CSV
-                                    </div>
-                                    <div class="export-menu-item" onclick="window.${ instanceName }.copyToBuffer()">
+                                    </button>
+                                    <button type="button" class="export-menu-item" role="menuitem" onclick="window.${ instanceName }.copyToBuffer()">
                                         <span class="export-icon"><i class="pi pi-copy"></i></span> В буфер
-                                    </div>
+                                    </button>
                                 </div>
                             </div>
                             ` : '' }
                             ${ this.checkboxMode && this.selectedRows.size > 0 && this.isTableWritable() ? `
-                            <button class="btn btn-sm btn-danger integram-bulk-delete-btn" id="${ instanceName }-bulk-delete-btn" onclick="window.${ instanceName }.showBulkDeleteConfirm(event)">
+                            <button type="button" class="btn btn-sm btn-danger integram-bulk-delete-btn" id="${ instanceName }-bulk-delete-btn" onclick="window.${ instanceName }.showBulkDeleteConfirm(event)">
                                 Удалить (${ this.selectedRows.size })
                             </button>
                             ` : '' }
                             ${ this.isTableDeletable() && this.isTableWritable() ? `
-                            <div class="integram-table-settings integram-table-settings-filter-delete" onclick="window.${ instanceName }.showFilterDeleteConfirm(event)" title="Удалить записи, удовлетворяющие заданному фильтру">
+                            <button type="button" class="integram-table-settings integram-table-settings-filter-delete" onclick="window.${ instanceName }.showFilterDeleteConfirm(event)" title="Удалить записи, удовлетворяющие заданному фильтру" aria-label="Удалить записи, удовлетворяющие заданному фильтру">
                                 <i class="pi pi-trash"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">Удалить</span>' : '' }
-                            </div>
+                            </button>
                             ` : '' }
-                            <div class="integram-table-settings" onclick="window.${ instanceName }.copyConfigUrl()" title="Скопировать ссылку с текущими фильтрами и группами">
+                            <button type="button" class="integram-table-settings" onclick="window.${ instanceName }.copyConfigUrl()" title="Скопировать ссылку с текущими фильтрами и группами" aria-label="Скопировать ссылку с текущими фильтрами и группами">
                                 <i class="pi pi-copy"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">ссылка</span>' : '' }
-                            </div>
-                            <div class="integram-table-settings" onclick="window.${ instanceName }.openTableSettings()" title="Настройка таблицы">
+                            </button>
+                            <button type="button" class="integram-table-settings" onclick="window.${ instanceName }.openTableSettings()" title="Настройка таблицы" aria-label="Настройка таблицы">
                                 <i class="pi pi-cog"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">вид</span>' : '' }
-                            </div>
-                            <div class="integram-table-settings" onclick="window.${ instanceName }.openColumnSettings()" title="Настройка колонок">
+                            </button>
+                            <button type="button" class="integram-table-settings" onclick="window.${ instanceName }.openColumnSettings()" title="Настройка колонок" aria-label="Настройка колонок">
                                 <i class="pi pi-th-large"></i>
                                 ${ !this.settings.hideMenuButtonLabels ? '<span class="btn-label">колонки</span>' : '' }
-                            </div>
+                            </button>
                         </div>
                     </div>
                     ${ this.renderHiddenFilterBadges() }
                     <div class="integram-table-container">
-                        <table class="integram-table${ this.settings.compact ? ' compact' : '' }">
+                        <table class="integram-table${ this.settings.compact ? ' compact' : '' }" aria-label="${ this.escapeHtml(this.options.title || 'Данные') }">
                         <thead>
                             ${ (() => {
                                 // Smart header grouping (issue #1540, #1624)
@@ -2410,7 +2495,7 @@ class IntegramTable{
                                         ? `<th class="checkbox-column-header" rowspan="${ smartDepth }"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.areAllSelectableRowsSelected() ? 'checked' : '' }></th>`
                                         : '';
                                     const addColHtml = this.isStructureWritable()
-                                        ? `<th class="add-column-header-cell" rowspan="${ smartDepth }" style="width: 36px; min-width: 36px;" title="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus"></i></th>`
+                                        ? `<th class="add-column-header-cell" rowspan="${ smartDepth }" style="width: 36px; min-width: 36px;"><button type="button" class="add-column-header-button" title="Добавить колонку" aria-label="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus" aria-hidden="true"></i></button></th>`
                                         : '';
                                     return rowsOfCells.map((cells, rowIdx) => `
                                         <tr>
@@ -2449,7 +2534,7 @@ class IntegramTable{
                                         })() : '';
                                         return `
                                             <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }>
-                                                <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ sortIndicator }${ this.escapeHtml(col.name) }</span>
+                                                <button type="button" class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }" aria-label="Сортировать по столбцу ${ this.escapeHtml(col.name) }">${ sortIndicator }${ this.escapeHtml(col.name) }</button>
                                                 ${ refIconHtml }
                                                 ${ addButtonHtml }
                                                 <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
@@ -2462,7 +2547,7 @@ class IntegramTable{
                                         ${ this.checkboxMode ? `<th class="checkbox-column-header"><input type="checkbox" class="row-select-all" title="Выбрать все" ${ this.areAllSelectableRowsSelected() ? 'checked' : '' }></th>` : '' }
                                         ${ singleRowCells }
                                         ${ this.settings.showReferences && (this.objectTableId || this.options.tableTypeId) ? `<th class="references-column-header" title="Таблицы, где эта таблица используется как справочник">Связи</th>` : '' }
-                                        ${ this.isStructureWritable() ? `<th class="add-column-header-cell" style="width: 36px; min-width: 36px;" title="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus"></i></th>` : '' }
+                                        ${ this.isStructureWritable() ? `<th class="add-column-header-cell" style="width: 36px; min-width: 36px;"><button type="button" class="add-column-header-button" title="Добавить колонку" aria-label="Добавить колонку" onclick="window.${ instanceName }.quickAddColumn()"><i class="pi pi-plus" aria-hidden="true"></i></button></th>` : '' }
                                     </tr>
                                     ${ this.filtersEnabled ? `
                                     <tr class="filter-row">
@@ -2481,7 +2566,7 @@ class IntegramTable{
                         <tbody>
                             ${ this.groupingEnabled && this.groupedData.length > 0 ?
                                 this.renderGroupedRows(orderedColumns, instanceName) :
-                                this.data.map((row, rowIndex) => `
+                                this.data.length > 0 ? this.data.map((row, rowIndex) => `
                                     <tr class="${ this.isRowSelected(rowIndex) ? 'row-selected' : '' }">
                                         ${ this.checkboxMode ? `<td class="checkbox-column-cell"><input type="checkbox" class="row-select-checkbox" data-row-index="${ rowIndex }" ${ this.isRowSelected(rowIndex) ? 'checked' : '' }></td>` : '' }
                                         ${ orderedColumns.map((col, colIndex) => {
@@ -2490,7 +2575,17 @@ class IntegramTable{
                                         }).join('') }
                                         ${ this.settings.showReferences && (this.objectTableId || this.options.tableTypeId) ? this.renderReferencesCell(rowIndex) : '' }
                                     </tr>
-                                `).join('')
+                                `).join('') : `
+                                    <tr class="integram-table-empty-row">
+                                        <td colspan="${ Math.max(1, orderedColumns.length + (this.checkboxMode ? 1 : 0) + (this.settings.showReferences && (this.objectTableId || this.options.tableTypeId) ? 1 : 0) + (this.isStructureWritable() ? 1 : 0)) }">
+                                            <div class="integram-table-empty-state" role="status">
+                                                <i class="pi ${ (this.pendingRequests || 0) > 0 ? 'pi-spin pi-spinner' : 'pi-inbox' }" aria-hidden="true"></i>
+                                                <span>${ (this.pendingRequests || 0) > 0 ? 'Загружаем данные…' : 'Записей пока нет' }</span>
+                                                <small>${ (this.pendingRequests || 0) > 0 ? 'Это займёт несколько секунд' : (this.hasActiveFilters() ? 'Попробуйте изменить или очистить фильтры' : 'Новые записи появятся здесь') }</small>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `
                             }
                         </tbody>
                         </table>
@@ -2570,9 +2665,9 @@ class IntegramTable{
                     return `
                         <td>
                             <div class="filter-cell-wrapper">
-                                <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
+                                <button type="button" class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }" title="Изменить условие фильтра" aria-label="Условие фильтра: ${ currentFilter.type }. Изменить">
                                     ${ currentFilter.type }
-                                </span>
+                                </button>
                                 <input type="text"
                                        class="filter-input-with-icon filter-ref-text-input"
                                        data-column-id="${ this.escapeHtml(column.id) }"
@@ -2623,9 +2718,9 @@ class IntegramTable{
                 return `
                     <td>
                         <div class="filter-cell-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
-                                ${ currentFilter.type }
-                            </span>
+                            <button type="button" class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }" title="Изменить условие фильтра" aria-label="Условие фильтра: ${ currentFilter.type }. Изменить">
+                                    ${ currentFilter.type }
+                                </button>
                             <button type="button"
                                     class="filter-ref-trigger"
                                     data-column-id="${ this.escapeHtml(column.id) }"
@@ -2650,9 +2745,9 @@ class IntegramTable{
                 return `
                     <td>
                         <div class="filter-cell-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
-                                ${ currentFilter.type }
-                            </span>
+                            <button type="button" class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }" title="Изменить условие фильтра" aria-label="Условие фильтра: ${ currentFilter.type }. Изменить">
+                                    ${ currentFilter.type }
+                                </button>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-date-picker"
                                    data-column-id="${ this.escapeHtml(column.id) }"
@@ -2683,9 +2778,9 @@ class IntegramTable{
                 return `
                     <td>
                         <div class="filter-cell-wrapper filter-range-wrapper">
-                            <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
-                                ${ currentFilter.type }
-                            </span>
+                            <button type="button" class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }" title="Изменить условие фильтра" aria-label="Условие фильтра: ${ currentFilter.type }. Изменить">
+                                    ${ currentFilter.type }
+                                </button>
                             <input type="${ inputType }"
                                    class="filter-input-with-icon filter-range-input"
                                    data-column-id="${ this.escapeHtml(column.id) }"
@@ -2709,9 +2804,9 @@ class IntegramTable{
             return `
                 <td>
                     <div class="filter-cell-wrapper">
-                        <span class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }">
-                            ${ currentFilter.type }
-                        </span>
+                        <button type="button" class="filter-icon-inside" data-column-id="${ this.escapeHtml(column.id) }" title="Изменить условие фильтра" aria-label="Условие фильтра: ${ currentFilter.type }. Изменить">
+                                    ${ currentFilter.type }
+                                </button>
                         <input type="text"
                                class="filter-input-with-icon"
                                data-column-id="${ this.escapeHtml(column.id) }"
@@ -3301,7 +3396,7 @@ class IntegramTable{
                     const editIconOnclick = isAnyRecordLink
                         ? `window.${ instanceName }.openAnyRefEditForm('${ recordId }', ${ rowIndex }); event.stopPropagation();`
                         : `window.${ instanceName }.openEditForm('${ recordId }', '${ typeId }', ${ rowIndex }); event.stopPropagation();`;
-                    const editIcon = `<span class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></span>`;
+                    const editIcon = `<button type="button" class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать" aria-label="Редактировать значение"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></button>`;
                     escapedValue = `<div class="cell-content-wrapper"><span title="${ recordId }">${ displayContent }</span>${ editIcon }</div>`;
                     cellTitleId = recordId; // Issue #4385: expose ID on the parent <td>
                 }
@@ -3682,7 +3777,7 @@ class IntegramTable{
                         })() : '';
                         rows[depth].push(`
                             <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
-                                <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</span>
+                                <button type="button" class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }" aria-label="Сортировать по столбцу ${ this.escapeHtml(displayName) }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</button>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
                                 <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
@@ -3748,7 +3843,7 @@ class IntegramTable{
 
                 return `
                     <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle } class="${ groupingClass }">
-                        <span class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</span>
+                        <button type="button" class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }" aria-label="Сортировать по столбцу ${ this.escapeHtml(col.name) }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</button>
                         ${ refIconHtml }
                         ${ addButtonHtml }
                         <div class="column-resize-handle" data-column-id="${ this.escapeHtml(col.id) }"></div>
@@ -3792,9 +3887,9 @@ class IntegramTable{
                 return `<span class="total-count-loading" title="Подсчёт..."><i class="pi pi-spin pi-spinner"></i></span>`;
             }
             if (this.totalRows === null) {
-                return `<span class="total-count-unknown" onclick="window.${ instanceName }.fetchTotalCount()" title="Нажмите, чтобы узнать общее количество">?</span>`;
+                return `<button type="button" class="total-count-unknown" onclick="window.${ instanceName }.fetchTotalCount()" title="Узнать общее количество" aria-label="Узнать общее количество записей">?</button>`;
             }
-            return `<span class="total-count-known" onclick="window.${ instanceName }.fetchTotalCount()" title="Нажмите, чтобы пересчитать общее количество">${ this.totalRows }</span>`;
+            return `<button type="button" class="total-count-known" onclick="window.${ instanceName }.fetchTotalCount()" title="Пересчитать общее количество" aria-label="Пересчитать общее количество записей: ${ this.totalRows }">${ this.totalRows }</button>`;
         }
 
         /**
@@ -7352,7 +7447,7 @@ class IntegramTable{
                     const editIconOnclick = isAnyRefCell
                         ? `window.${ instanceName }.openAnyRefEditForm('${ editRecordId }', ${ editRowIndex }); event.stopPropagation();`
                         : `window.${ instanceName }.openEditForm('${ editRecordId }', '${ editTypeId }', ${ editRowIndex }); event.stopPropagation();`;
-                    const editIcon = `<span class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></span>`;
+                    const editIcon = `<button type="button" class="edit-icon" onclick="${ editIconOnclick }" title="Редактировать" aria-label="Редактировать значение"><i class="pi pi-pencil" style="font-size: 0.875rem;"></i></button>`;
                     cell.innerHTML = `<div class="cell-content-wrapper"><span title="${ editRecordId }">${ escapedValue }</span>${ editIcon }</div>`;
                     // Issue #4385: keep the ID readable on the parent cell when the edit icon covers the wrapper
                     if (editRecordId) { cell.setAttribute('title', editRecordId); }
@@ -10034,7 +10129,7 @@ class IntegramTable{
             overlay.className = 'column-settings-overlay';
 
             const modal = document.createElement('div');
-            modal.className = 'column-settings-modal';
+            modal.className = 'column-settings-modal table-settings-modal';
             const instanceName = this.options.instanceName;
 
             modal.innerHTML = `
@@ -11351,7 +11446,7 @@ class IntegramTable{
                     <span class="hidden-filter-badge" data-col-id="${colId}">
                         <span class="hidden-filter-badge-name">${this.escapeHtml(hf.colName)}</span>
                         <span class="hidden-filter-badge-value">${this.escapeHtml(displayValue)}</span>
-                        <span class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${colId}')" title="Удалить фильтр"><i class="pi pi-times"></i></span>
+                        <button type="button" class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${colId}')" title="Удалить фильтр" aria-label="Удалить фильтр ${this.escapeHtml(hf.colName)}"><i class="pi pi-times" aria-hidden="true"></i></button>
                     </span>
                 `;
             }).join('');
@@ -12776,7 +12871,7 @@ class IntegramTable{
                 const tableUrl = `/${dbName}/table/${safeTypeId}?F_U=${parentId}&F_I=${recordId}`;
 
                 recordIdHtml = `
-                    <span class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID">#${recordId}</span>
+                    <button type="button" class="edit-form-record-id" onclick="window.${instanceName}.copyRecordIdToClipboard('${recordId}')" title="Скопировать ID" aria-label="Скопировать ID ${recordId}">#${recordId}</button>
                     <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer">
                         <i class="pi pi-table"></i>
                     </a>
@@ -18213,26 +18308,43 @@ class IntegramTable{
 
             const toast = document.createElement('div');
             toast.className = `integram-toast integram-toast-${ type }`;
+            toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+            toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+            toast.setAttribute('aria-atomic', 'true');
+
+            const icon = document.createElement('span');
+            icon.className = 'integram-toast-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = { success: '✓', error: '!', warning: '!', info: 'i' }[type] || 'i';
+
+            const content = document.createElement('span');
+            content.className = 'integram-toast-content';
             const sanitizedMessage = this.sanitizeInlineMessageHtml(message);
             const hasSafeHtml = /<(a|br)\b/i.test(sanitizedMessage);
             if (hasSafeHtml) {
-                toast.innerHTML = sanitizedMessage;
+                content.innerHTML = sanitizedMessage;
             } else {
-                toast.textContent = message;
+                content.textContent = message;
             }
 
+            const dismissButton = document.createElement('button');
+            dismissButton.type = 'button';
+            dismissButton.className = 'integram-toast-dismiss';
+            dismissButton.setAttribute('aria-label', 'Закрыть уведомление');
+            dismissButton.textContent = '×';
+            toast.append(icon, content, dismissButton);
             document.body.appendChild(toast);
 
-            // Auto-remove after 5 seconds
-            setTimeout(() => {
+            const dismiss = () => {
+                if (!toast.isConnected || toast.classList.contains('fade-out')) return;
                 toast.classList.add('fade-out');
-                setTimeout(() => toast.remove(), 300);
-            }, 5000);
+                setTimeout(() => toast.remove(), 220);
+            };
 
-            // Click to dismiss
-            toast.addEventListener('click', () => {
-                toast.classList.add('fade-out');
-                setTimeout(() => toast.remove(), 300);
+            const autoDismissTimer = setTimeout(dismiss, 5000);
+            dismissButton.addEventListener('click', () => {
+                clearTimeout(autoDismissTimer);
+                dismiss();
             });
         }
 
@@ -18948,10 +19060,22 @@ class IntegramTable{
             if (!menu) return;
 
             const isVisible = menu.style.display !== 'none';
+            const trigger = event && event.currentTarget
+                ? event.currentTarget
+                : document.querySelector(`[aria-controls="${ menuId }"]`);
 
-            // Hide all export menus first
+            const removeOutsideHandler = targetMenu => {
+                if (!targetMenu || !targetMenu._integramExportCloseHandler) return;
+                document.removeEventListener('click', targetMenu._integramExportCloseHandler);
+                targetMenu._integramExportCloseHandler = null;
+            };
+
+            // Keep visual and assistive states in sync across every table instance.
             document.querySelectorAll('.integram-export-menu').forEach(m => {
+                removeOutsideHandler(m);
                 m.style.display = 'none';
+                const owner = document.querySelector(`[aria-controls="${ m.id }"]`);
+                if (owner) owner.setAttribute('aria-expanded', 'false');
             });
 
             if (!isVisible) {
@@ -18962,9 +19086,7 @@ class IntegramTable{
                 }
 
                 // Position the menu below the button using fixed coordinates.
-                const btn = event && event.currentTarget
-                    ? event.currentTarget
-                    : document.querySelector(`#${ menuId }`)?.previousElementSibling;
+                const btn = trigger;
                 if (btn) {
                     const rect = btn.getBoundingClientRect();
                     menu.style.position = 'fixed';
@@ -18974,17 +19096,42 @@ class IntegramTable{
                 }
 
                 menu.style.display = 'block';
+                if (trigger) trigger.setAttribute('aria-expanded', 'true');
 
-                // Close menu when clicking outside
-                setTimeout(() => {
-                    const closeHandler = (e) => {
-                        if (!menu.contains(e.target) && !e.target.closest('.integram-table-export-container')) {
-                            menu.style.display = 'none';
-                            document.removeEventListener('click', closeHandler);
+                const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+                menu.onkeydown = (keyboardEvent) => {
+                    const currentIndex = items.indexOf(document.activeElement);
+                    if (keyboardEvent.key === 'Escape') {
+                        keyboardEvent.preventDefault();
+                        menu.style.display = 'none';
+                        removeOutsideHandler(menu);
+                        if (trigger) {
+                            trigger.setAttribute('aria-expanded', 'false');
+                            trigger.focus();
                         }
-                    };
-                    document.addEventListener('click', closeHandler);
-                }, 0);
+                    } else if (keyboardEvent.key === 'ArrowDown' || keyboardEvent.key === 'ArrowUp') {
+                        keyboardEvent.preventDefault();
+                        const direction = keyboardEvent.key === 'ArrowDown' ? 1 : -1;
+                        const nextIndex = currentIndex < 0
+                            ? (direction > 0 ? 0 : items.length - 1)
+                            : (currentIndex + direction + items.length) % items.length;
+                        if (items[nextIndex]) items[nextIndex].focus();
+                    }
+                };
+                if (event && event.detail === 0 && items[0]) items[0].focus();
+
+                // Close menu when clicking outside. The current trigger click is ignored
+                // because its target still belongs to .integram-table-export-container.
+                const closeHandler = (outsideEvent) => {
+                    if (!menu.contains(outsideEvent.target) && !outsideEvent.target.closest('.integram-table-export-container')) {
+                        menu.style.display = 'none';
+                        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+                        document.removeEventListener('click', closeHandler);
+                        menu._integramExportCloseHandler = null;
+                    }
+                };
+                menu._integramExportCloseHandler = closeHandler;
+                document.addEventListener('click', closeHandler);
             }
         }
 
@@ -18999,6 +19146,12 @@ class IntegramTable{
             const menu = document.getElementById(menuId);
             if (menu) {
                 menu.style.display = 'none';
+                if (menu._integramExportCloseHandler) {
+                    document.removeEventListener('click', menu._integramExportCloseHandler);
+                    menu._integramExportCloseHandler = null;
+                }
+                const trigger = document.querySelector(`[aria-controls="${ menuId }"]`);
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
             }
 
             try {
@@ -19500,6 +19653,12 @@ class IntegramTable{
             const menu = document.getElementById(menuId);
             if (menu) {
                 menu.style.display = 'none';
+                if (menu._integramExportCloseHandler) {
+                    document.removeEventListener('click', menu._integramExportCloseHandler);
+                    menu._integramExportCloseHandler = null;
+                }
+                const trigger = document.querySelector(`[aria-controls="${ menuId }"]`);
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
             }
 
             try {
@@ -21326,7 +21485,7 @@ class IntegramCreateFormHelper {
         const tableUrl = `/${dbName}/table/${typeId}?F_U=${parentId || 1}&F_I=${recordId}`;
 
         const recordIdHtml = `
-            <span class="edit-form-record-id" onclick="navigator.clipboard.writeText('${recordId}').then(() => { this.style.color='#28a745'; setTimeout(() => this.style.color='', 1000); })" title="Скопировать ID" style="cursor:pointer;margin-left:8px;font-size: 0.75rem;color:var(--cards-text-secondary);">#${recordId}</span>
+            <button type="button" class="edit-form-record-id" onclick="navigator.clipboard.writeText('${recordId}').then(() => { this.style.color='#28a745'; setTimeout(() => this.style.color='', 1000); })" title="Скопировать ID" aria-label="Скопировать ID ${recordId}" style="margin-left:8px;">#${recordId}</button>
             <a href="${tableUrl}" class="edit-form-table-link" title="Открыть в таблице" target="_blank" rel="noopener noreferrer" style="margin-left:4px;">
                 <i class="pi pi-table"></i>
             </a>

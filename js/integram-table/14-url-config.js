@@ -608,7 +608,7 @@
                     <span class="hidden-filter-badge" data-col-id="${colId}">
                         <span class="hidden-filter-badge-name">${this.escapeHtml(hf.colName)}</span>
                         <span class="hidden-filter-badge-value">${this.escapeHtml(displayValue)}</span>
-                        <span class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${colId}')" title="Удалить фильтр"><i class="pi pi-times"></i></span>
+                        <button type="button" class="hidden-filter-badge-remove" onclick="window.${instanceName}.removeUrlFilter('${colId}')" title="Удалить фильтр" aria-label="Удалить фильтр ${this.escapeHtml(hf.colName)}"><i class="pi pi-times" aria-hidden="true"></i></button>
                     </span>
                 `;
             }).join('');

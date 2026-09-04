@@ -598,26 +598,43 @@
 
             const toast = document.createElement('div');
             toast.className = `integram-toast integram-toast-${ type }`;
+            toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+            toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+            toast.setAttribute('aria-atomic', 'true');
+
+            const icon = document.createElement('span');
+            icon.className = 'integram-toast-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = { success: '✓', error: '!', warning: '!', info: 'i' }[type] || 'i';
+
+            const content = document.createElement('span');
+            content.className = 'integram-toast-content';
             const sanitizedMessage = this.sanitizeInlineMessageHtml(message);
             const hasSafeHtml = /<(a|br)\b/i.test(sanitizedMessage);
             if (hasSafeHtml) {
-                toast.innerHTML = sanitizedMessage;
+                content.innerHTML = sanitizedMessage;
             } else {
-                toast.textContent = message;
+                content.textContent = message;
             }
 
+            const dismissButton = document.createElement('button');
+            dismissButton.type = 'button';
+            dismissButton.className = 'integram-toast-dismiss';
+            dismissButton.setAttribute('aria-label', 'Закрыть уведомление');
+            dismissButton.textContent = '×';
+            toast.append(icon, content, dismissButton);
             document.body.appendChild(toast);
 
-            // Auto-remove after 5 seconds
-            setTimeout(() => {
+            const dismiss = () => {
+                if (!toast.isConnected || toast.classList.contains('fade-out')) return;
                 toast.classList.add('fade-out');
-                setTimeout(() => toast.remove(), 300);
-            }, 5000);
+                setTimeout(() => toast.remove(), 220);
+            };
 
-            // Click to dismiss
-            toast.addEventListener('click', () => {
-                toast.classList.add('fade-out');
-                setTimeout(() => toast.remove(), 300);
+            const autoDismissTimer = setTimeout(dismiss, 5000);
+            dismissButton.addEventListener('click', () => {
+                clearTimeout(autoDismissTimer);
+                dismiss();
             });
         }
 

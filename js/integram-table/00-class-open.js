@@ -16,7 +16,8 @@
 const itModalEscapeState = {
     stack: [],
     keydownHandler: null,
-    cleanupByModal: new WeakMap()
+    cleanupByModal: new WeakMap(),
+    nextLabelId: 1
 };
 
 function itAddModalDocumentListener(modal, type, handler, options) {
@@ -45,6 +46,30 @@ function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
     let active = true;
     let observer = null;
     const entry = { modal, close: null, unregister: null };
+    const previouslyFocused = document.activeElement;
+    const dialogSelector = '.edit-form-modal, .column-settings-modal, .grouping-settings-modal, .form-field-settings-modal, .integram-modal, .col-edit-modal, [role="dialog"]';
+    const dialog = modal.matches && modal.matches(dialogSelector)
+        ? modal
+        : (modal.querySelector ? modal.querySelector(dialogSelector) : null);
+
+    entry.dialog = dialog;
+    if (dialog) {
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        if (!dialog.hasAttribute('tabindex')) dialog.setAttribute('tabindex', '-1');
+        const heading = dialog.querySelector('h1, h2, h3, .modal-title');
+        if (heading) {
+            if (!heading.id) {
+                heading.id = `integram-modal-title-${ itModalEscapeState.nextLabelId++ }`;
+            }
+            dialog.setAttribute('aria-labelledby', heading.id);
+        } else if (!dialog.hasAttribute('aria-label')) {
+            dialog.setAttribute('aria-label', 'Диалоговое окно');
+        }
+    }
+    if (document.body && document.body.classList && typeof document.body.classList.add === 'function') {
+        document.body.classList.add('integram-modal-open');
+    }
 
     const unregister = () => {
         if (!active) return;
@@ -56,16 +81,34 @@ function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
         if (owner && owner._modalCloseHandlers) owner._modalCloseHandlers.delete(close);
         const index = itModalEscapeState.stack.indexOf(entry);
         if (index !== -1) itModalEscapeState.stack.splice(index, 1);
-        if (itModalEscapeState.stack.length === 0 && itModalEscapeState.keydownHandler) {
-            document.removeEventListener('keydown', itModalEscapeState.keydownHandler);
-            itModalEscapeState.keydownHandler = null;
+        if (itModalEscapeState.stack.length === 0) {
+            if (itModalEscapeState.keydownHandler) {
+                document.removeEventListener('keydown', itModalEscapeState.keydownHandler);
+                itModalEscapeState.keydownHandler = null;
+            }
+            if (document.body && document.body.classList && typeof document.body.classList.remove === 'function') {
+                document.body.classList.remove('integram-modal-open');
+            }
         }
     };
 
     const close = (...args) => {
         if (!active) return;
         unregister();
-        return closeCallback(...args);
+        const result = closeCallback(...args);
+        const restoreFocus = () => {
+            if (previouslyFocused && previouslyFocused.isConnected && typeof previouslyFocused.focus === 'function') {
+                try {
+                    previouslyFocused.focus({ preventScroll: true });
+                } catch (error) {
+                    previouslyFocused.focus();
+                }
+            }
+        };
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreFocus);
+        else if (typeof setTimeout === 'function') setTimeout(restoreFocus, 0);
+        else restoreFocus();
+        return result;
     };
 
     if (owner) {
@@ -79,19 +122,61 @@ function itCreateModalCloseHandler(modal, closeCallback, owner = null) {
 
     if (!itModalEscapeState.keydownHandler) {
         itModalEscapeState.keydownHandler = (event) => {
-            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            if (event.defaultPrevented) return;
             while (itModalEscapeState.stack.length > 0) {
                 const top = itModalEscapeState.stack[itModalEscapeState.stack.length - 1];
                 if (!itIsModalConnected(top.modal)) {
                     top.unregister();
                     continue;
                 }
-                top.close();
-                break;
+
+                if (event.key === 'Escape') {
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
+                    top.close();
+                    return;
+                }
+
+                if (event.key === 'Tab') {
+                    const dialogElement = top.dialog || top.modal;
+                    const candidates = Array.from(dialogElement.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                        .filter(element => !element.disabled && element.getAttribute('aria-hidden') !== 'true' && element.offsetParent !== null);
+                    if (candidates.length === 0) {
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (typeof dialogElement.focus === 'function') dialogElement.focus();
+                        return;
+                    }
+                    const first = candidates[0];
+                    const last = candidates[candidates.length - 1];
+                    if (event.shiftKey && (document.activeElement === first || !dialogElement.contains(document.activeElement))) {
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && (document.activeElement === last || !dialogElement.contains(document.activeElement))) {
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        first.focus();
+                    }
+                    return;
+                }
+                return;
             }
         };
         document.addEventListener('keydown', itModalEscapeState.keydownHandler);
     }
+
+    const focusDialog = () => {
+        if (!active || !dialog || !itIsModalConnected(modal) || dialog.contains(document.activeElement)) return;
+        const autofocus = dialog.querySelector('[autofocus]');
+        const target = autofocus || dialog;
+        if (typeof target.focus === 'function') {
+            try {
+                target.focus({ preventScroll: true });
+            } catch (error) {
+                target.focus();
+            }
+        }
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusDialog);
+    else if (typeof setTimeout === 'function') setTimeout(focusDialog, 0);
+    else focusDialog();
 
     if (typeof MutationObserver !== 'undefined' && document.documentElement) {
         observer = new MutationObserver(() => {
