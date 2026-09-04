@@ -2533,7 +2533,8 @@ class IntegramTable{
                                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                                         })() : '';
                                         return `
-                                            <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }>
+                                            <th data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }"${ widthStyle }>
+                                                <button type="button" class="column-drag-handle" draggable="true" data-column-id="${ this.escapeHtml(col.id) }" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${ this.escapeHtml(col.name) }. Используйте стрелки влево и вправо"><i class="pi pi-bars" aria-hidden="true"></i></button>
                                                 <button type="button" class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }" aria-label="Сортировать по столбцу ${ this.escapeHtml(col.name) }">${ sortIndicator }${ this.escapeHtml(col.name) }</button>
                                                 ${ refIconHtml }
                                                 ${ addButtonHtml }
@@ -3776,7 +3777,8 @@ class IntegramTable{
                             return `<a class="column-ref-link" href="/${dbName}/table/${refTypeId}" target="_blank" rel="noopener noreferrer" title="Открыть справочник в новой вкладке" onclick="event.stopPropagation()"><i class="pi pi-external-link"></i></a>`;
                         })() : '';
                         rows[depth].push(`
-                            <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
+                            <th data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }"${ widthStyle }${ rowspan > 1 ? ` rowspan="${ rowspan }"` : '' } class="${ groupingClass }">
+                                <button type="button" class="column-drag-handle" draggable="true" data-column-id="${ this.escapeHtml(col.id) }" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${ this.escapeHtml(displayName) }. Используйте стрелки влево и вправо"><i class="pi pi-bars" aria-hidden="true"></i></button>
                                 <button type="button" class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }" aria-label="Сортировать по столбцу ${ this.escapeHtml(displayName) }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(displayName) }</button>
                                 ${ refIconHtml }
                                 ${ addButtonHtml }
@@ -3842,7 +3844,8 @@ class IntegramTable{
                 })() : '';
 
                 return `
-                    <th data-column-id="${ this.escapeHtml(col.id) }" draggable="true" title="${ this.escapeHtml(col.id) }"${ widthStyle } class="${ groupingClass }">
+                    <th data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }"${ widthStyle } class="${ groupingClass }">
+                        <button type="button" class="column-drag-handle" draggable="true" data-column-id="${ this.escapeHtml(col.id) }" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${ this.escapeHtml(col.name) }. Используйте стрелки влево и вправо"><i class="pi pi-bars" aria-hidden="true"></i></button>
                         <button type="button" class="column-header-content" data-column-id="${ this.escapeHtml(col.id) }" title="${ this.escapeHtml(col.id) }" style="${ this.settings.wrapHeaders ? 'white-space: normal;' : '' }" aria-label="Сортировать по столбцу ${ this.escapeHtml(col.name) }">${ groupingBadge }${ sortIndicator }${ this.escapeHtml(col.name) }</button>
                         ${ refIconHtml }
                         ${ addButtonHtml }
@@ -4758,49 +4761,201 @@ class IntegramTable{
 
             // Determine the first visible column ID — it cannot be moved (issue #951)
             const firstVisibleColumnId = this.columnOrder.find(id => this.visibleColumns.includes(id));
+            const clearColumnDragIndicators = () => {
+                this.container.querySelectorAll('.drag-over-before, .drag-over-after').forEach(el => {
+                    el.classList.remove('drag-over-before', 'drag-over-after');
+                });
+            };
+            const getDropPosition = (event, th) => {
+                const rect = th.getBoundingClientRect();
+                return event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before';
+            };
+            const showDropPosition = (th, position) => {
+                clearColumnDragIndicators();
+                th.classList.add(position === 'after' ? 'drag-over-after' : 'drag-over-before');
+            };
+            const autoScrollColumns = (clientX) => {
+                const scroller = this.container.querySelector('.integram-table-container');
+                if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return;
+                const rect = scroller.getBoundingClientRect();
+                const edge = Math.min(72, Math.max(40, rect.width * 0.12));
+                let delta = 0;
+                if (clientX < rect.left + edge) {
+                    const strength = Math.min(1, Math.max(0, (rect.left + edge - clientX) / edge));
+                    delta = -Math.ceil(6 + 18 * strength);
+                } else if (clientX > rect.right - edge) {
+                    const strength = Math.min(1, Math.max(0, (clientX - (rect.right - edge)) / edge));
+                    delta = Math.ceil(6 + 18 * strength);
+                }
+                if (delta !== 0) scroller.scrollLeft += delta;
+            };
+            const announceColumnMove = (columnId, direction) => {
+                const schedule = typeof requestAnimationFrame === 'function'
+                    ? requestAnimationFrame
+                    : callback => setTimeout(callback, 0);
+                schedule(() => {
+                    const handle = [...this.container.querySelectorAll('.column-drag-handle')]
+                        .find(candidate => candidate.dataset.columnId === columnId);
+                    if (handle) handle.focus({ preventScroll: true });
+                    let status = this.container.querySelector('.column-reorder-status');
+                    if (!status) {
+                        status = document.createElement('span');
+                        status.className = 'column-reorder-status';
+                        status.setAttribute('role', 'status');
+                        status.setAttribute('aria-live', 'polite');
+                        this.container.appendChild(status);
+                    }
+                    const column = this.columns.find(col => col.id === columnId);
+                    status.textContent = `Столбец «${ column ? column.name : columnId }» перемещён ${ direction }.`;
+                });
+            };
 
-            const headers = this.container.querySelectorAll('th[draggable]');
+            const headers = this.container.querySelectorAll('th[data-column-id]');
             headers.forEach(th => {
                 const columnId = th.dataset.columnId;
+                const dragHandle = th.querySelector('.column-drag-handle');
+                if (!dragHandle) return;
 
-                // The first column is not draggable and cannot be a drop target (issue #951)
+                // The first column is fixed. Hiding its handle keeps that constraint clear.
                 if (columnId === firstVisibleColumnId) {
-                    th.removeAttribute('draggable');
+                    dragHandle.draggable = false;
+                    dragHandle.hidden = true;
+                    dragHandle.tabIndex = -1;
+                    dragHandle.setAttribute('aria-hidden', 'true');
+                    th.classList.add('column-fixed');
                     return;
                 }
 
-                th.addEventListener('dragstart', (e) => {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', th.dataset.columnId);
-                    th.classList.add('dragging');
-                });
-
-                th.addEventListener('dragend', (e) => {
-                    th.classList.remove('dragging');
-                    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-                });
-
-                th.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    th.classList.add('drag-over');
-                });
-
-                th.addEventListener('dragleave', (e) => {
-                    th.classList.remove('drag-over');
-                });
-
-                th.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    const draggedId = e.dataTransfer.getData('text/plain');
-                    const targetId = th.dataset.columnId;
-
-                    // Prevent dropping onto the first column or dropping a column onto itself (issue #951, #966)
-                    if (draggedId !== targetId && draggedId !== firstVisibleColumnId && targetId !== firstVisibleColumnId) {
-                        this.reorderColumns(draggedId, targetId);
+                dragHandle.addEventListener('dragstart', (event) => {
+                    event.stopPropagation();
+                    this._columnDragState = { draggedId: columnId, targetId: null, position: null };
+                    if (event.dataTransfer) {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', columnId);
                     }
+                    th.classList.add('dragging');
+                    const table = th.closest('.integram-table');
+                    if (table) table.classList.add('column-drag-active');
+                });
 
-                    th.classList.remove('drag-over');
+                dragHandle.addEventListener('dragend', () => {
+                    th.classList.remove('dragging');
+                    const table = th.closest('.integram-table');
+                    if (table) table.classList.remove('column-drag-active');
+                    clearColumnDragIndicators();
+                    this._columnDragState = null;
+                });
+
+                dragHandle.addEventListener('keydown', (event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                    event.preventDefault();
+                    const visibleOrder = this.columnOrder.filter(id => this.visibleColumns.includes(id));
+                    const currentIndex = visibleOrder.indexOf(columnId);
+                    const movingLeft = event.key === 'ArrowLeft';
+                    const targetId = visibleOrder[currentIndex + (movingLeft ? -1 : 1)];
+                    if (!targetId || targetId === firstVisibleColumnId) return;
+                    const moved = this.reorderColumns(columnId, targetId, movingLeft ? 'before' : 'after');
+                    if (moved) announceColumnMove(columnId, movingLeft ? 'влево' : 'вправо');
+                });
+
+                let pointerDrag = null;
+                const finishPointerDrag = (commit) => {
+                    if (!pointerDrag) return;
+                    const dragState = this._columnDragState;
+                    const shouldCommit = commit && pointerDrag.active && dragState && dragState.targetId;
+                    const draggedId = dragState && dragState.draggedId;
+                    const targetId = dragState && dragState.targetId;
+                    const position = dragState && dragState.position;
+                    if (dragHandle.hasPointerCapture && dragHandle.hasPointerCapture(pointerDrag.pointerId)) {
+                        dragHandle.releasePointerCapture(pointerDrag.pointerId);
+                    }
+                    pointerDrag = null;
+                    th.classList.remove('dragging');
+                    const table = th.closest('.integram-table');
+                    if (table) table.classList.remove('column-drag-active');
+                    clearColumnDragIndicators();
+                    this._columnDragState = null;
+                    if (shouldCommit) this.reorderColumns(draggedId, targetId, position);
+                };
+
+                dragHandle.addEventListener('pointerdown', (event) => {
+                    if (event.pointerType === 'mouse') return;
+                    event.preventDefault();
+                    pointerDrag = {
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        active: false
+                    };
+                    if (dragHandle.setPointerCapture) dragHandle.setPointerCapture(event.pointerId);
+                });
+
+                dragHandle.addEventListener('pointermove', (event) => {
+                    if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+                    if (!pointerDrag.active) {
+                        const distance = Math.hypot(event.clientX - pointerDrag.startX, event.clientY - pointerDrag.startY);
+                        if (distance < 8) return;
+                        pointerDrag.active = true;
+                        this._columnDragState = { draggedId: columnId, targetId: null, position: null };
+                        th.classList.add('dragging');
+                        const table = th.closest('.integram-table');
+                        if (table) table.classList.add('column-drag-active');
+                    }
+                    event.preventDefault();
+                    autoScrollColumns(event.clientX);
+                    const pointedElement = document.elementFromPoint(event.clientX, event.clientY);
+                    const target = pointedElement && pointedElement.closest('th[data-column-id]');
+                    const targetId = target && target.dataset.columnId;
+                    if (!target || targetId === columnId || targetId === firstVisibleColumnId) {
+                        clearColumnDragIndicators();
+                        this._columnDragState.targetId = null;
+                        this._columnDragState.position = null;
+                        return;
+                    }
+                    const position = getDropPosition(event, target);
+                    this._columnDragState.targetId = targetId;
+                    this._columnDragState.position = position;
+                    showDropPosition(target, position);
+                });
+
+                dragHandle.addEventListener('pointerup', (event) => {
+                    if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+                    event.preventDefault();
+                    finishPointerDrag(true);
+                });
+
+                dragHandle.addEventListener('pointercancel', () => finishPointerDrag(false));
+
+                const updateDropTarget = (event) => {
+                    const dragState = this._columnDragState;
+                    if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return false;
+                    event.preventDefault();
+                    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                    const position = getDropPosition(event, th);
+                    dragState.targetId = columnId;
+                    dragState.position = position;
+                    showDropPosition(th, position);
+                    autoScrollColumns(event.clientX);
+                    return true;
+                };
+
+                th.addEventListener('dragenter', updateDropTarget);
+                th.addEventListener('dragover', updateDropTarget);
+
+                th.addEventListener('dragleave', (event) => {
+                    if (event.relatedTarget && th.contains(event.relatedTarget)) return;
+                    th.classList.remove('drag-over-before', 'drag-over-after');
+                });
+
+                th.addEventListener('drop', (event) => {
+                    const dragState = this._columnDragState;
+                    if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const position = getDropPosition(event, th);
+                    clearColumnDragIndicators();
+                    this.reorderColumns(dragState.draggedId, columnId, position);
+                    this._columnDragState = null;
                 });
             });
 
@@ -8364,24 +8519,27 @@ class IntegramTable{
             }
         }
 
-        reorderColumns(draggedId, targetId) {
+        reorderColumns(draggedId, targetId, position = 'before') {
             const draggedIndex = this.columnOrder.indexOf(draggedId);
             const targetIndex = this.columnOrder.indexOf(targetId);
 
-            if (draggedIndex === -1 || targetIndex === -1) return;
+            if (draggedIndex === -1 || targetIndex === -1) return false;
 
             // The first column (index 0) cannot be moved and cannot be a drop target (issue #958)
-            if (draggedIndex === 0 || targetIndex === 0) return;
+            if (draggedIndex === 0 || targetIndex === 0) return false;
 
-            // Adjust targetIndex: removing draggedId shifts all elements after it left by one (issue #962)
-            const adjustedTargetIndex = targetIndex > draggedIndex ? targetIndex - 1 : targetIndex;
+            // Resolve the insertion point after removing the dragged column. Keeping the
+            // before/after intent explicit makes drops on either half of a header predictable.
+            const nextOrder = [...this.columnOrder];
+            nextOrder.splice(draggedIndex, 1);
+            const targetIndexAfterRemoval = nextOrder.indexOf(targetId);
+            const insertionIndex = targetIndexAfterRemoval + (position === 'after' ? 1 : 0);
+            nextOrder.splice(insertionIndex, 0, draggedId);
 
             // If the column would end up in the same position, skip all side effects (issue #966)
-            if (adjustedTargetIndex === draggedIndex) return;
+            if (nextOrder.every((id, index) => id === this.columnOrder[index])) return false;
 
-            this.columnOrder.splice(draggedIndex, 1);
-            this.columnOrder.splice(adjustedTargetIndex, 0, draggedId);
-
+            this.columnOrder = nextOrder;
             this.saveColumnState();
 
             // Persist the new column order to the backend (issue #951, #956, #958)
@@ -8397,6 +8555,7 @@ class IntegramTable{
             }
 
             this.render();
+            return true;
         }
 
         /**
@@ -8524,14 +8683,12 @@ class IntegramTable{
                         const displayName = alias
                             ? `${ this.escapeHtml(alias) } <span class="col-original-name">(${this.escapeHtml(originalName)})</span>`
                             : this.escapeHtml(col.name);
-                        // First column: not draggable, no drag handle, shows lock icon (issue #962)
-                        // Other columns: draggable, show 1-based position number among requisites (issue #962)
-                        const draggableAttr = isFirst ? 'draggable="false"' : 'draggable="true"';
+                        // First column is fixed. Every other row exposes a dedicated drag handle.
                         const handleOrLock = isFirst
                             ? `<span class="col-settings-drag-handle col-settings-fixed" title="Первая колонка зафиксирована">&#128274;</span>`
-                            : `<span class="col-settings-drag-handle" title="Перетащите для изменения порядка">&#9776;</span><span class="col-settings-order-num">${ idx }</span>`;
+                            : `<button type="button" class="col-settings-drag-handle" draggable="true" data-column-id="${ this.escapeHtml(col.id) }" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${ this.escapeHtml(col.name) }. Используйте стрелки вверх и вниз"><i class="pi pi-bars" aria-hidden="true"></i></button><span class="col-settings-order-num">${ idx }</span>`;
                         return `
-                        <div class="column-settings-item ${ isFirst ? 'column-settings-item--fixed' : '' }" ${ draggableAttr } data-column-id="${ this.escapeHtml(col.id) }">
+                        <div class="column-settings-item ${ isFirst ? 'column-settings-item--fixed' : '' }" data-column-id="${ this.escapeHtml(col.id) }">
                             ${ handleOrLock }
                             ${ this.getColTypeIcon(col) }
                             <label style="flex: 1; margin: 0;">
@@ -8566,7 +8723,7 @@ class IntegramTable{
                 if (helpBtnNoAccess) helpBtnNoAccess.style.display = 'none';
                 const addColBtnNoAccess = modal.querySelector(`#add-column-btn-${instanceName}`);
                 if (addColBtnNoAccess) addColBtnNoAccess.style.display = 'none';
-                modal.querySelectorAll('.column-settings-item').forEach(item => { item.setAttribute('draggable', 'false'); });
+                modal.querySelectorAll('.col-settings-drag-handle').forEach(handle => { handle.setAttribute('draggable', 'false'); });
             }
 
             // Attach help button handler (issue #968)
@@ -8615,86 +8772,103 @@ class IntegramTable{
             overlay.addEventListener('click', () => this.closeColumnSettings());
 
             // Drag-and-drop reordering of columns in the settings list (issue #953)
-            const columnList = modal.querySelector(`#column-settings-list-${instanceName}`);
+            const columnList = modal.querySelector('#column-settings-list-' + instanceName);
             let dragItem = null;
+            const clearSettingsDropIndicators = () => {
+                columnList.querySelectorAll('.drag-over-before, .drag-over-after').forEach(el => {
+                    el.classList.remove('drag-over-before', 'drag-over-after');
+                });
+            };
+            const getSettingsDropPosition = (event, target) => {
+                const rect = target.getBoundingClientRect();
+                return event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+            };
+            const placeSettingsItem = (item, target, position) => {
+                if (position === 'after') columnList.insertBefore(item, target.nextSibling);
+                else columnList.insertBefore(item, target);
+            };
 
-            columnList.addEventListener('dragstart', (e) => {
-                const item = e.target.closest('.column-settings-item');
-                // Prevent dragging the first (fixed) column (issue #962)
-                if (item && item.dataset.columnId === firstColId) {
-                    e.preventDefault();
+            columnList.addEventListener('dragstart', (event) => {
+                const handle = event.target.closest('.col-settings-drag-handle[draggable="true"]');
+                const item = handle && handle.closest('.column-settings-item');
+                if (!item || item.dataset.columnId === firstColId) {
+                    event.preventDefault();
                     return;
                 }
                 dragItem = item;
-                if (dragItem) dragItem.classList.add('dragging');
+                dragItem.classList.add('dragging');
+                columnList.classList.add('column-settings-list--dragging');
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', item.dataset.columnId);
+                }
             });
 
             columnList.addEventListener('dragend', () => {
                 if (dragItem) dragItem.classList.remove('dragging');
-                columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
+                columnList.classList.remove('column-settings-list--dragging');
+                clearSettingsDropIndicators();
                 dragItem = null;
             });
 
-            columnList.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                const target = e.target.closest('.column-settings-item');
-                if (target && target !== dragItem) {
-                    columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
-                    target.classList.add('drag-over');
+            const updateSettingsDropTarget = (event) => {
+                if (!dragItem) return false;
+                const target = event.target.closest('.column-settings-item');
+                if (!target || target === dragItem || target.classList.contains('column-settings-item--fixed')) {
+                    clearSettingsDropIndicators();
+                    return false;
                 }
+                event.preventDefault();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                const position = getSettingsDropPosition(event, target);
+                clearSettingsDropIndicators();
+                target.classList.add(position === 'after' ? 'drag-over-after' : 'drag-over-before');
+                return true;
+            };
+
+            columnList.addEventListener('dragenter', updateSettingsDropTarget);
+            columnList.addEventListener('dragover', updateSettingsDropTarget);
+
+            columnList.addEventListener('dragleave', (event) => {
+                const target = event.target.closest('.column-settings-item');
+                if (!target || (event.relatedTarget && target.contains(event.relatedTarget))) return;
+                target.classList.remove('drag-over-before', 'drag-over-after');
             });
 
-            columnList.addEventListener('drop', (e) => {
-                e.preventDefault();
-                const target = e.target.closest('.column-settings-item');
-                if (target && target !== dragItem && dragItem) {
-                    const draggedId = dragItem.dataset.columnId;
-                    const targetId = target.dataset.columnId;
-                    // Prevent moving the first column or dropping onto the first column (issue #958)
-                    const firstColumnId = this.columnOrder[0];
-                    if (draggedId === firstColumnId || targetId === firstColumnId) {
-                        columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
-                        return;
-                    }
-                    // Determine insert position based on mouse Y relative to target midpoint (issue #958)
-                    // This allows moving a column to the last position (insert after target)
-                    const targetRect = target.getBoundingClientRect();
-                    const midY = targetRect.top + targetRect.height / 2;
-                    if (e.clientY > midY) {
-                        // Insert after target
-                        columnList.insertBefore(dragItem, target.nextSibling);
-                        // For reorderColumns, use the element after the dragged item as the target
-                        // If there's nothing after, append to end — reorderColumns handles index-based placement
-                        const nextSibling = target.nextSibling === dragItem ? target.nextSibling && target.nextSibling.nextSibling : target.nextSibling;
-                        if (nextSibling && nextSibling.dataset && nextSibling.dataset.columnId) {
-                            this._columnSettingsChanged = true;
-                            this.reorderColumns(draggedId, nextSibling.dataset.columnId);
-                        } else {
-                            // Move to the last position: splice to end
-                            const draggedIdx = this.columnOrder.indexOf(draggedId);
-                            // Skip if already at the last position (issue #966)
-                            if (draggedIdx > 0 && draggedIdx < this.columnOrder.length - 1) {
-                                this._columnSettingsChanged = true;
-                                this.columnOrder.splice(draggedIdx, 1);
-                                this.columnOrder.push(draggedId);
-                                this.saveColumnState();
-                                const newOrderIndex = this.columnOrder.indexOf(draggedId);
-                                if (newOrderIndex >= 0) {
-                                    this.saveColumnOrderToServer(draggedId, newOrderIndex);
-                                }
-                                this.render();
-                            }
-                        }
-                    } else {
-                        // Insert before target
-                        columnList.insertBefore(dragItem, target);
-                        this._columnSettingsChanged = true;
-                        this.reorderColumns(draggedId, targetId);
-                    }
-                }
-                columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
-                // Refresh order number badges after drop (issue #962)
+            columnList.addEventListener('drop', (event) => {
+                const target = event.target.closest('.column-settings-item');
+                if (!target || !dragItem || target === dragItem || target.classList.contains('column-settings-item--fixed')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const draggedId = dragItem.dataset.columnId;
+                const targetId = target.dataset.columnId;
+                const position = getSettingsDropPosition(event, target);
+                placeSettingsItem(dragItem, target, position);
+                this._columnSettingsChanged = true;
+                this.reorderColumns(draggedId, targetId, position);
+                clearSettingsDropIndicators();
                 refreshOrderBadges();
+            });
+
+            columnList.addEventListener('keydown', (event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                const handle = event.target.closest('.col-settings-drag-handle[draggable="true"]');
+                const item = handle && handle.closest('.column-settings-item');
+                if (!item) return;
+                const movableItems = [...columnList.querySelectorAll('.column-settings-item:not(.column-settings-item--fixed)')];
+                const currentIndex = movableItems.indexOf(item);
+                const movingUp = event.key === 'ArrowUp';
+                const target = movableItems[currentIndex + (movingUp ? -1 : 1)];
+                if (!target) return;
+                event.preventDefault();
+                const position = movingUp ? 'before' : 'after';
+                placeSettingsItem(item, target, position);
+                const moved = this.reorderColumns(item.dataset.columnId, target.dataset.columnId, position);
+                if (moved) {
+                    this._columnSettingsChanged = true;
+                    refreshOrderBadges();
+                    handle.focus({ preventScroll: true });
+                }
             });
 
             // Update the 1-based order number badges to reflect current DOM order (issue #962)
@@ -9857,13 +10031,12 @@ class IntegramTable{
                         if (columnList) {
                             const newItem = document.createElement('div');
                             newItem.className = 'column-settings-item';
-                            newItem.setAttribute('draggable', 'true');
                             newItem.dataset.columnId = newColumnId;
                             // Determine 1-based position number among non-fixed columns (issue #970)
                             const nonFixedCount = columnList.querySelectorAll('.column-settings-item:not(.column-settings-item--fixed)').length;
                             const orderNum = nonFixedCount + 1;
                             newItem.innerHTML = `
-                                <span class="col-settings-drag-handle" title="Перетащите для изменения порядка">&#9776;</span><span class="col-settings-order-num">${orderNum}</span>
+                                <button type="button" class="col-settings-drag-handle" draggable="true" data-column-id="${newColumnId}" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${this.escapeHtml(columnName)}. Используйте стрелки вверх и вниз"><i class="pi pi-bars" aria-hidden="true"></i></button><span class="col-settings-order-num">${orderNum}</span>
                                 ${this.getColTypeIcon(newCol)}
                                 <label style="flex: 1; margin: 0;">
                                     <input type="checkbox" data-column-id="${newColumnId}" checked>

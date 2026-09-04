@@ -146,24 +146,27 @@
             }
         }
 
-        reorderColumns(draggedId, targetId) {
+        reorderColumns(draggedId, targetId, position = 'before') {
             const draggedIndex = this.columnOrder.indexOf(draggedId);
             const targetIndex = this.columnOrder.indexOf(targetId);
 
-            if (draggedIndex === -1 || targetIndex === -1) return;
+            if (draggedIndex === -1 || targetIndex === -1) return false;
 
             // The first column (index 0) cannot be moved and cannot be a drop target (issue #958)
-            if (draggedIndex === 0 || targetIndex === 0) return;
+            if (draggedIndex === 0 || targetIndex === 0) return false;
 
-            // Adjust targetIndex: removing draggedId shifts all elements after it left by one (issue #962)
-            const adjustedTargetIndex = targetIndex > draggedIndex ? targetIndex - 1 : targetIndex;
+            // Resolve the insertion point after removing the dragged column. Keeping the
+            // before/after intent explicit makes drops on either half of a header predictable.
+            const nextOrder = [...this.columnOrder];
+            nextOrder.splice(draggedIndex, 1);
+            const targetIndexAfterRemoval = nextOrder.indexOf(targetId);
+            const insertionIndex = targetIndexAfterRemoval + (position === 'after' ? 1 : 0);
+            nextOrder.splice(insertionIndex, 0, draggedId);
 
             // If the column would end up in the same position, skip all side effects (issue #966)
-            if (adjustedTargetIndex === draggedIndex) return;
+            if (nextOrder.every((id, index) => id === this.columnOrder[index])) return false;
 
-            this.columnOrder.splice(draggedIndex, 1);
-            this.columnOrder.splice(adjustedTargetIndex, 0, draggedId);
-
+            this.columnOrder = nextOrder;
             this.saveColumnState();
 
             // Persist the new column order to the backend (issue #951, #956, #958)
@@ -179,6 +182,7 @@
             }
 
             this.render();
+            return true;
         }
 
         /**

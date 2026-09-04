@@ -88,14 +88,12 @@
                         const displayName = alias
                             ? `${ this.escapeHtml(alias) } <span class="col-original-name">(${this.escapeHtml(originalName)})</span>`
                             : this.escapeHtml(col.name);
-                        // First column: not draggable, no drag handle, shows lock icon (issue #962)
-                        // Other columns: draggable, show 1-based position number among requisites (issue #962)
-                        const draggableAttr = isFirst ? 'draggable="false"' : 'draggable="true"';
+                        // First column is fixed. Every other row exposes a dedicated drag handle.
                         const handleOrLock = isFirst
                             ? `<span class="col-settings-drag-handle col-settings-fixed" title="Первая колонка зафиксирована">&#128274;</span>`
-                            : `<span class="col-settings-drag-handle" title="Перетащите для изменения порядка">&#9776;</span><span class="col-settings-order-num">${ idx }</span>`;
+                            : `<button type="button" class="col-settings-drag-handle" draggable="true" data-column-id="${ this.escapeHtml(col.id) }" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${ this.escapeHtml(col.name) }. Используйте стрелки вверх и вниз"><i class="pi pi-bars" aria-hidden="true"></i></button><span class="col-settings-order-num">${ idx }</span>`;
                         return `
-                        <div class="column-settings-item ${ isFirst ? 'column-settings-item--fixed' : '' }" ${ draggableAttr } data-column-id="${ this.escapeHtml(col.id) }">
+                        <div class="column-settings-item ${ isFirst ? 'column-settings-item--fixed' : '' }" data-column-id="${ this.escapeHtml(col.id) }">
                             ${ handleOrLock }
                             ${ this.getColTypeIcon(col) }
                             <label style="flex: 1; margin: 0;">
@@ -130,7 +128,7 @@
                 if (helpBtnNoAccess) helpBtnNoAccess.style.display = 'none';
                 const addColBtnNoAccess = modal.querySelector(`#add-column-btn-${instanceName}`);
                 if (addColBtnNoAccess) addColBtnNoAccess.style.display = 'none';
-                modal.querySelectorAll('.column-settings-item').forEach(item => { item.setAttribute('draggable', 'false'); });
+                modal.querySelectorAll('.col-settings-drag-handle').forEach(handle => { handle.setAttribute('draggable', 'false'); });
             }
 
             // Attach help button handler (issue #968)
@@ -179,86 +177,103 @@
             overlay.addEventListener('click', () => this.closeColumnSettings());
 
             // Drag-and-drop reordering of columns in the settings list (issue #953)
-            const columnList = modal.querySelector(`#column-settings-list-${instanceName}`);
+            const columnList = modal.querySelector('#column-settings-list-' + instanceName);
             let dragItem = null;
+            const clearSettingsDropIndicators = () => {
+                columnList.querySelectorAll('.drag-over-before, .drag-over-after').forEach(el => {
+                    el.classList.remove('drag-over-before', 'drag-over-after');
+                });
+            };
+            const getSettingsDropPosition = (event, target) => {
+                const rect = target.getBoundingClientRect();
+                return event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
+            };
+            const placeSettingsItem = (item, target, position) => {
+                if (position === 'after') columnList.insertBefore(item, target.nextSibling);
+                else columnList.insertBefore(item, target);
+            };
 
-            columnList.addEventListener('dragstart', (e) => {
-                const item = e.target.closest('.column-settings-item');
-                // Prevent dragging the first (fixed) column (issue #962)
-                if (item && item.dataset.columnId === firstColId) {
-                    e.preventDefault();
+            columnList.addEventListener('dragstart', (event) => {
+                const handle = event.target.closest('.col-settings-drag-handle[draggable="true"]');
+                const item = handle && handle.closest('.column-settings-item');
+                if (!item || item.dataset.columnId === firstColId) {
+                    event.preventDefault();
                     return;
                 }
                 dragItem = item;
-                if (dragItem) dragItem.classList.add('dragging');
+                dragItem.classList.add('dragging');
+                columnList.classList.add('column-settings-list--dragging');
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', item.dataset.columnId);
+                }
             });
 
             columnList.addEventListener('dragend', () => {
                 if (dragItem) dragItem.classList.remove('dragging');
-                columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
+                columnList.classList.remove('column-settings-list--dragging');
+                clearSettingsDropIndicators();
                 dragItem = null;
             });
 
-            columnList.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                const target = e.target.closest('.column-settings-item');
-                if (target && target !== dragItem) {
-                    columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
-                    target.classList.add('drag-over');
+            const updateSettingsDropTarget = (event) => {
+                if (!dragItem) return false;
+                const target = event.target.closest('.column-settings-item');
+                if (!target || target === dragItem || target.classList.contains('column-settings-item--fixed')) {
+                    clearSettingsDropIndicators();
+                    return false;
                 }
+                event.preventDefault();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                const position = getSettingsDropPosition(event, target);
+                clearSettingsDropIndicators();
+                target.classList.add(position === 'after' ? 'drag-over-after' : 'drag-over-before');
+                return true;
+            };
+
+            columnList.addEventListener('dragenter', updateSettingsDropTarget);
+            columnList.addEventListener('dragover', updateSettingsDropTarget);
+
+            columnList.addEventListener('dragleave', (event) => {
+                const target = event.target.closest('.column-settings-item');
+                if (!target || (event.relatedTarget && target.contains(event.relatedTarget))) return;
+                target.classList.remove('drag-over-before', 'drag-over-after');
             });
 
-            columnList.addEventListener('drop', (e) => {
-                e.preventDefault();
-                const target = e.target.closest('.column-settings-item');
-                if (target && target !== dragItem && dragItem) {
-                    const draggedId = dragItem.dataset.columnId;
-                    const targetId = target.dataset.columnId;
-                    // Prevent moving the first column or dropping onto the first column (issue #958)
-                    const firstColumnId = this.columnOrder[0];
-                    if (draggedId === firstColumnId || targetId === firstColumnId) {
-                        columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
-                        return;
-                    }
-                    // Determine insert position based on mouse Y relative to target midpoint (issue #958)
-                    // This allows moving a column to the last position (insert after target)
-                    const targetRect = target.getBoundingClientRect();
-                    const midY = targetRect.top + targetRect.height / 2;
-                    if (e.clientY > midY) {
-                        // Insert after target
-                        columnList.insertBefore(dragItem, target.nextSibling);
-                        // For reorderColumns, use the element after the dragged item as the target
-                        // If there's nothing after, append to end — reorderColumns handles index-based placement
-                        const nextSibling = target.nextSibling === dragItem ? target.nextSibling && target.nextSibling.nextSibling : target.nextSibling;
-                        if (nextSibling && nextSibling.dataset && nextSibling.dataset.columnId) {
-                            this._columnSettingsChanged = true;
-                            this.reorderColumns(draggedId, nextSibling.dataset.columnId);
-                        } else {
-                            // Move to the last position: splice to end
-                            const draggedIdx = this.columnOrder.indexOf(draggedId);
-                            // Skip if already at the last position (issue #966)
-                            if (draggedIdx > 0 && draggedIdx < this.columnOrder.length - 1) {
-                                this._columnSettingsChanged = true;
-                                this.columnOrder.splice(draggedIdx, 1);
-                                this.columnOrder.push(draggedId);
-                                this.saveColumnState();
-                                const newOrderIndex = this.columnOrder.indexOf(draggedId);
-                                if (newOrderIndex >= 0) {
-                                    this.saveColumnOrderToServer(draggedId, newOrderIndex);
-                                }
-                                this.render();
-                            }
-                        }
-                    } else {
-                        // Insert before target
-                        columnList.insertBefore(dragItem, target);
-                        this._columnSettingsChanged = true;
-                        this.reorderColumns(draggedId, targetId);
-                    }
-                }
-                columnList.querySelectorAll('.column-settings-item').forEach(el => el.classList.remove('drag-over'));
-                // Refresh order number badges after drop (issue #962)
+            columnList.addEventListener('drop', (event) => {
+                const target = event.target.closest('.column-settings-item');
+                if (!target || !dragItem || target === dragItem || target.classList.contains('column-settings-item--fixed')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const draggedId = dragItem.dataset.columnId;
+                const targetId = target.dataset.columnId;
+                const position = getSettingsDropPosition(event, target);
+                placeSettingsItem(dragItem, target, position);
+                this._columnSettingsChanged = true;
+                this.reorderColumns(draggedId, targetId, position);
+                clearSettingsDropIndicators();
                 refreshOrderBadges();
+            });
+
+            columnList.addEventListener('keydown', (event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                const handle = event.target.closest('.col-settings-drag-handle[draggable="true"]');
+                const item = handle && handle.closest('.column-settings-item');
+                if (!item) return;
+                const movableItems = [...columnList.querySelectorAll('.column-settings-item:not(.column-settings-item--fixed)')];
+                const currentIndex = movableItems.indexOf(item);
+                const movingUp = event.key === 'ArrowUp';
+                const target = movableItems[currentIndex + (movingUp ? -1 : 1)];
+                if (!target) return;
+                event.preventDefault();
+                const position = movingUp ? 'before' : 'after';
+                placeSettingsItem(item, target, position);
+                const moved = this.reorderColumns(item.dataset.columnId, target.dataset.columnId, position);
+                if (moved) {
+                    this._columnSettingsChanged = true;
+                    refreshOrderBadges();
+                    handle.focus({ preventScroll: true });
+                }
             });
 
             // Update the 1-based order number badges to reflect current DOM order (issue #962)
@@ -1421,13 +1436,12 @@
                         if (columnList) {
                             const newItem = document.createElement('div');
                             newItem.className = 'column-settings-item';
-                            newItem.setAttribute('draggable', 'true');
                             newItem.dataset.columnId = newColumnId;
                             // Determine 1-based position number among non-fixed columns (issue #970)
                             const nonFixedCount = columnList.querySelectorAll('.column-settings-item:not(.column-settings-item--fixed)').length;
                             const orderNum = nonFixedCount + 1;
                             newItem.innerHTML = `
-                                <span class="col-settings-drag-handle" title="Перетащите для изменения порядка">&#9776;</span><span class="col-settings-order-num">${orderNum}</span>
+                                <button type="button" class="col-settings-drag-handle" draggable="true" data-column-id="${newColumnId}" title="Перетащите для изменения порядка" aria-label="Переместить столбец ${this.escapeHtml(columnName)}. Используйте стрелки вверх и вниз"><i class="pi pi-bars" aria-hidden="true"></i></button><span class="col-settings-order-num">${orderNum}</span>
                                 ${this.getColTypeIcon(newCol)}
                                 <label style="flex: 1; margin: 0;">
                                     <input type="checkbox" data-column-id="${newColumnId}" checked>

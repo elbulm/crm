@@ -280,49 +280,201 @@
 
             // Determine the first visible column ID — it cannot be moved (issue #951)
             const firstVisibleColumnId = this.columnOrder.find(id => this.visibleColumns.includes(id));
+            const clearColumnDragIndicators = () => {
+                this.container.querySelectorAll('.drag-over-before, .drag-over-after').forEach(el => {
+                    el.classList.remove('drag-over-before', 'drag-over-after');
+                });
+            };
+            const getDropPosition = (event, th) => {
+                const rect = th.getBoundingClientRect();
+                return event.clientX >= rect.left + rect.width / 2 ? 'after' : 'before';
+            };
+            const showDropPosition = (th, position) => {
+                clearColumnDragIndicators();
+                th.classList.add(position === 'after' ? 'drag-over-after' : 'drag-over-before');
+            };
+            const autoScrollColumns = (clientX) => {
+                const scroller = this.container.querySelector('.integram-table-container');
+                if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return;
+                const rect = scroller.getBoundingClientRect();
+                const edge = Math.min(72, Math.max(40, rect.width * 0.12));
+                let delta = 0;
+                if (clientX < rect.left + edge) {
+                    const strength = Math.min(1, Math.max(0, (rect.left + edge - clientX) / edge));
+                    delta = -Math.ceil(6 + 18 * strength);
+                } else if (clientX > rect.right - edge) {
+                    const strength = Math.min(1, Math.max(0, (clientX - (rect.right - edge)) / edge));
+                    delta = Math.ceil(6 + 18 * strength);
+                }
+                if (delta !== 0) scroller.scrollLeft += delta;
+            };
+            const announceColumnMove = (columnId, direction) => {
+                const schedule = typeof requestAnimationFrame === 'function'
+                    ? requestAnimationFrame
+                    : callback => setTimeout(callback, 0);
+                schedule(() => {
+                    const handle = [...this.container.querySelectorAll('.column-drag-handle')]
+                        .find(candidate => candidate.dataset.columnId === columnId);
+                    if (handle) handle.focus({ preventScroll: true });
+                    let status = this.container.querySelector('.column-reorder-status');
+                    if (!status) {
+                        status = document.createElement('span');
+                        status.className = 'column-reorder-status';
+                        status.setAttribute('role', 'status');
+                        status.setAttribute('aria-live', 'polite');
+                        this.container.appendChild(status);
+                    }
+                    const column = this.columns.find(col => col.id === columnId);
+                    status.textContent = `Столбец «${ column ? column.name : columnId }» перемещён ${ direction }.`;
+                });
+            };
 
-            const headers = this.container.querySelectorAll('th[draggable]');
+            const headers = this.container.querySelectorAll('th[data-column-id]');
             headers.forEach(th => {
                 const columnId = th.dataset.columnId;
+                const dragHandle = th.querySelector('.column-drag-handle');
+                if (!dragHandle) return;
 
-                // The first column is not draggable and cannot be a drop target (issue #951)
+                // The first column is fixed. Hiding its handle keeps that constraint clear.
                 if (columnId === firstVisibleColumnId) {
-                    th.removeAttribute('draggable');
+                    dragHandle.draggable = false;
+                    dragHandle.hidden = true;
+                    dragHandle.tabIndex = -1;
+                    dragHandle.setAttribute('aria-hidden', 'true');
+                    th.classList.add('column-fixed');
                     return;
                 }
 
-                th.addEventListener('dragstart', (e) => {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', th.dataset.columnId);
-                    th.classList.add('dragging');
-                });
-
-                th.addEventListener('dragend', (e) => {
-                    th.classList.remove('dragging');
-                    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-                });
-
-                th.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    th.classList.add('drag-over');
-                });
-
-                th.addEventListener('dragleave', (e) => {
-                    th.classList.remove('drag-over');
-                });
-
-                th.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    const draggedId = e.dataTransfer.getData('text/plain');
-                    const targetId = th.dataset.columnId;
-
-                    // Prevent dropping onto the first column or dropping a column onto itself (issue #951, #966)
-                    if (draggedId !== targetId && draggedId !== firstVisibleColumnId && targetId !== firstVisibleColumnId) {
-                        this.reorderColumns(draggedId, targetId);
+                dragHandle.addEventListener('dragstart', (event) => {
+                    event.stopPropagation();
+                    this._columnDragState = { draggedId: columnId, targetId: null, position: null };
+                    if (event.dataTransfer) {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', columnId);
                     }
+                    th.classList.add('dragging');
+                    const table = th.closest('.integram-table');
+                    if (table) table.classList.add('column-drag-active');
+                });
 
-                    th.classList.remove('drag-over');
+                dragHandle.addEventListener('dragend', () => {
+                    th.classList.remove('dragging');
+                    const table = th.closest('.integram-table');
+                    if (table) table.classList.remove('column-drag-active');
+                    clearColumnDragIndicators();
+                    this._columnDragState = null;
+                });
+
+                dragHandle.addEventListener('keydown', (event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                    event.preventDefault();
+                    const visibleOrder = this.columnOrder.filter(id => this.visibleColumns.includes(id));
+                    const currentIndex = visibleOrder.indexOf(columnId);
+                    const movingLeft = event.key === 'ArrowLeft';
+                    const targetId = visibleOrder[currentIndex + (movingLeft ? -1 : 1)];
+                    if (!targetId || targetId === firstVisibleColumnId) return;
+                    const moved = this.reorderColumns(columnId, targetId, movingLeft ? 'before' : 'after');
+                    if (moved) announceColumnMove(columnId, movingLeft ? 'влево' : 'вправо');
+                });
+
+                let pointerDrag = null;
+                const finishPointerDrag = (commit) => {
+                    if (!pointerDrag) return;
+                    const dragState = this._columnDragState;
+                    const shouldCommit = commit && pointerDrag.active && dragState && dragState.targetId;
+                    const draggedId = dragState && dragState.draggedId;
+                    const targetId = dragState && dragState.targetId;
+                    const position = dragState && dragState.position;
+                    if (dragHandle.hasPointerCapture && dragHandle.hasPointerCapture(pointerDrag.pointerId)) {
+                        dragHandle.releasePointerCapture(pointerDrag.pointerId);
+                    }
+                    pointerDrag = null;
+                    th.classList.remove('dragging');
+                    const table = th.closest('.integram-table');
+                    if (table) table.classList.remove('column-drag-active');
+                    clearColumnDragIndicators();
+                    this._columnDragState = null;
+                    if (shouldCommit) this.reorderColumns(draggedId, targetId, position);
+                };
+
+                dragHandle.addEventListener('pointerdown', (event) => {
+                    if (event.pointerType === 'mouse') return;
+                    event.preventDefault();
+                    pointerDrag = {
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        active: false
+                    };
+                    if (dragHandle.setPointerCapture) dragHandle.setPointerCapture(event.pointerId);
+                });
+
+                dragHandle.addEventListener('pointermove', (event) => {
+                    if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+                    if (!pointerDrag.active) {
+                        const distance = Math.hypot(event.clientX - pointerDrag.startX, event.clientY - pointerDrag.startY);
+                        if (distance < 8) return;
+                        pointerDrag.active = true;
+                        this._columnDragState = { draggedId: columnId, targetId: null, position: null };
+                        th.classList.add('dragging');
+                        const table = th.closest('.integram-table');
+                        if (table) table.classList.add('column-drag-active');
+                    }
+                    event.preventDefault();
+                    autoScrollColumns(event.clientX);
+                    const pointedElement = document.elementFromPoint(event.clientX, event.clientY);
+                    const target = pointedElement && pointedElement.closest('th[data-column-id]');
+                    const targetId = target && target.dataset.columnId;
+                    if (!target || targetId === columnId || targetId === firstVisibleColumnId) {
+                        clearColumnDragIndicators();
+                        this._columnDragState.targetId = null;
+                        this._columnDragState.position = null;
+                        return;
+                    }
+                    const position = getDropPosition(event, target);
+                    this._columnDragState.targetId = targetId;
+                    this._columnDragState.position = position;
+                    showDropPosition(target, position);
+                });
+
+                dragHandle.addEventListener('pointerup', (event) => {
+                    if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+                    event.preventDefault();
+                    finishPointerDrag(true);
+                });
+
+                dragHandle.addEventListener('pointercancel', () => finishPointerDrag(false));
+
+                const updateDropTarget = (event) => {
+                    const dragState = this._columnDragState;
+                    if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return false;
+                    event.preventDefault();
+                    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                    const position = getDropPosition(event, th);
+                    dragState.targetId = columnId;
+                    dragState.position = position;
+                    showDropPosition(th, position);
+                    autoScrollColumns(event.clientX);
+                    return true;
+                };
+
+                th.addEventListener('dragenter', updateDropTarget);
+                th.addEventListener('dragover', updateDropTarget);
+
+                th.addEventListener('dragleave', (event) => {
+                    if (event.relatedTarget && th.contains(event.relatedTarget)) return;
+                    th.classList.remove('drag-over-before', 'drag-over-after');
+                });
+
+                th.addEventListener('drop', (event) => {
+                    const dragState = this._columnDragState;
+                    if (!dragState || dragState.draggedId === columnId || columnId === firstVisibleColumnId) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const position = getDropPosition(event, th);
+                    clearColumnDragIndicators();
+                    this.reorderColumns(dragState.draggedId, columnId, position);
+                    this._columnDragState = null;
                 });
             });
 
