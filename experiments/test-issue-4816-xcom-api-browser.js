@@ -90,12 +90,19 @@ async function waitForExpression(cdp, expression, label) {
 }
 
 (async function run() {
-  const edge = [
+  const browserExecutable = [
+    process.env.CHROME_BIN,
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-  ].find(candidate => fs.existsSync(candidate));
-  assert(edge, 'Edge or Chrome is installed');
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+  ].find(candidate => candidate && fs.existsSync(candidate));
+  assert(browserExecutable, 'Chrome, Chromium or Edge is installed');
 
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'xcom-browser-test-'));
   const storageRoot = path.join(temporary, 'runs');
@@ -113,8 +120,9 @@ async function waitForExpression(cdp, expression, label) {
   });
   const appPort = server.address().port;
   const debugPort = await freePort();
-  const browser = spawn(edge, [
-    '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+  const browser = spawn(browserExecutable, [
+    '--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage',
+    '--no-first-run', '--no-default-browser-check',
     `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, 'about:blank'
   ], {stdio: 'ignore', windowsHide: true});
   let cdp;
@@ -122,7 +130,7 @@ async function waitForExpression(cdp, expression, label) {
   try {
     await waitJson(`http://127.0.0.1:${debugPort}/json/version`, 160);
     const page = await fetch(
-      `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(`http://127.0.0.1:${appPort}/#mass`)}`,
+      `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(`http://127.0.0.1:${appPort}/#setup`)}`,
       {method: 'PUT'}
     ).then(response => response.json());
     cdp = new Cdp(page.webSocketDebuggerUrl);
@@ -131,6 +139,20 @@ async function waitForExpression(cdp, expression, label) {
     await cdp.call('Page.enable');
 
     await waitForExpression(cdp, "document.querySelector('#execution-badge') && document.querySelector('#execution-badge').textContent.includes('Серверная')", 'API mode');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-mode=setup]').textContent.includes('Настройка шаблона') && document.querySelector('[data-mode=setup]').textContent.includes('для интегратора')"), true, 'setup mode explains the integrator role');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-mode=workspace]').textContent.includes('Рабочее место') && document.querySelector('[data-mode=workspace]').textContent.includes('для оператора')"), true, 'workspace mode explains the operator role');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('#workflow-chrome').hidden"), true, 'operator journey stays out of one-time setup');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('#step-number').textContent"), '1', 'setup opens on its first step');
+    await cdp.evaluate("document.querySelector('#wizard-next').click()");
+    assert.strictEqual(await cdp.evaluate("document.querySelector('#step-number').textContent"), '2', 'setup proceeds to column mapping');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-step=\"2\"]').textContent.includes('Сейчас товары ещё не сравниваются')"), true, 'column mapping explains its effect');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-step=\"2\"] thead').textContent.includes('Уверенность подсказки')"), true, 'mapping confidence is explained in the rendered UI');
+
+    await cdp.evaluate("document.querySelector('[data-page=mass]').click()");
+    await waitForExpression(cdp, "document.querySelector('#mass').classList.contains('is-active')", 'operator files step');
+    assert.deepStrictEqual(await cdp.evaluate("Array.from(document.querySelectorAll('[data-flow-page]')).map(function (button) { return [button.dataset.flowPage, button.disabled]; })"), [['mass', false], ['review', true], ['export', true]], 'later journey stages start gated');
+    assert.deepStrictEqual(await cdp.evaluate("[document.querySelector('#mass-next').hidden, document.querySelector('#review-next').hidden, document.querySelector('#download-export').disabled, document.querySelector('#export-blocker').hidden, document.querySelector('#completion-note').hidden]"), [true, true, true, false, true], 'next actions and export start in the safe state');
+
     const documentNode = await cdp.call('DOM.getDocument', {depth: -1});
     const rfpNode = await cdp.call('DOM.querySelector', {nodeId: documentNode.root.nodeId, selector: '#run-rfp-input'});
     const skuNode = await cdp.call('DOM.querySelector', {nodeId: documentNode.root.nodeId, selector: '#run-sku-input'});
@@ -145,12 +167,24 @@ async function waitForExpression(cdp, expression, label) {
     assert.strictEqual(await cdp.evaluate("document.querySelector('#total-stat').textContent"), '5', 'UI shows server total');
     assert.strictEqual(await cdp.evaluate("document.querySelector('#review-stat').textContent"), '1', 'UI shows review queue');
     assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#result-body tr').length"), 5, 'UI renders API result page');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-flow-page=review]').disabled"), false, 'review unlocks after matching');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-flow-page=export]').disabled"), true, 'export stays locked while a decision is pending');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('#mass-next').hidden"), false, 'matching reveals the review action');
 
     await cdp.evaluate("document.querySelector('#mass-next [data-go=review]').click()");
     await waitForExpression(cdp, "document.querySelector('#review').classList.contains('is-active') && document.querySelector('[data-candidate]')", 'review page');
     await cdp.evaluate("document.querySelector('[data-candidate]').click(); document.querySelector('#accept-candidate').click()");
     await waitForExpression(cdp, "document.querySelector('#review-queue-pill').textContent.includes('завершена')", 'saved API decision');
     assert.strictEqual(await cdp.evaluate("document.querySelector('#download-export').disabled"), false, 'export unlocks after API decision');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('#review-next').hidden"), false, 'saved decision reveals the export action');
+    assert.strictEqual(await cdp.evaluate("document.querySelector('[data-flow-page=export]').disabled"), false, 'export stage unlocks after review');
+    assert.deepStrictEqual(await cdp.evaluate("[document.querySelector('#export-blocker').hidden, document.querySelector('#completion-note').hidden]"), [true, false], 'completed journey replaces the blocker with a repeat action');
+
+    await cdp.evaluate("document.querySelector('#review-next [data-go=export]').click()");
+    await waitForExpression(cdp, "document.querySelector('#export').classList.contains('is-active')", 'export page');
+    await cdp.evaluate("document.querySelector('#completion-note [data-go=mass]').click()");
+    await waitForExpression(cdp, "document.querySelector('#mass').classList.contains('is-active')", 'new run');
+    assert.deepStrictEqual(await cdp.evaluate("[document.querySelector('[data-flow-page=review]').disabled, document.querySelector('[data-flow-page=export]').disabled, document.querySelector('#mass-next').hidden, document.querySelector('#download-export').disabled, document.querySelector('#completion-note').hidden]"), [true, true, true, true, true], 'new run resets journey gates');
     assert.strictEqual(cdp.exceptions.length, 0, `browser has no runtime exceptions: ${cdp.exceptions.join('; ')}`);
 
     console.log('OK: test-issue-4816-xcom-api-browser');
