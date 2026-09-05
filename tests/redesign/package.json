@@ -1,0 +1,9 @@
+{
+  "name": "integram-redesign-checks",
+  "private": true,
+  "scripts": {
+    "test": "node regression.cjs && node edges.cjs",
+    "quality": "node quality.cjs"
+  },
+  "devDependencies": {"playwright": "1.62.1", "axe-core": "4.13.0"}
+}

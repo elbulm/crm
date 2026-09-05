@@ -18,3 +18,4 @@ html,body{margin:0;padding:0!important;background:var(--preview-bg);color:var(--
 @media(min-width:1025px){.ig .layout{min-height:calc(100vh - 330px)!important}}
 @media(max-width:700px){.preview-shell{padding:18px 12px}.preview-header{align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:16px}.preview-header h1{font-size:18px}.preview-header p{font-size:12px}.theme-control{margin-left:auto}.concept-nav{gap:6px}.concept-nav a{flex:1;justify-content:center;padding:10px 9px;font-size:13px;gap:6px;min-height:44px;box-sizing:border-box}.concept-note{font-size:12px;min-height:58px}.preview-footer{font-size:11px}.theme-control select{min-height:40px;font-size:14px}}
 @media(max-width:360px){.preview-header h1 span{display:block;font-size:15px;margin-top:2px}.concept-nav a{font-size:12px;padding-inline:7px}}
+.preview-footer a{color:var(--preview-text);text-underline-offset:3px}

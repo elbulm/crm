@@ -1,30 +1,7 @@
 (()=>{
-  const descriptions={
-    contour:'Спокойный рабочий интерфейс: понятная навигация и карточка рядом со списком. Рекомендуемый вариант.',
-    register:'Больше данных на экране: плотная таблица, сохранённые представления и отдельная карточка записи.',
-    focus:'Работа по этапам: выразительная боковая навигация, доска сделок и акцент на следующем действии.'
-  };
-  const names={contour:'Контур',register:'Реестр',focus:'Фокус'};
-  function showConcept(){
-    const requested=location.hash.slice(1);
-    const active=Object.hasOwn(descriptions,requested)?requested:'contour';
-    document.querySelectorAll('[data-concept]').forEach(link=>{
-      if(link.dataset.concept===active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
-    });
-    Object.keys(descriptions).forEach(slug=>{document.getElementById('panel-'+slug).hidden=slug!==active;});
-    document.getElementById('concept-note').textContent=descriptions[active];
-    document.title=names[active]+' — редизайн Интеграма';
-  }
-  const theme=document.getElementById('preview-theme');
-  function applyTheme(){
-    const value=theme.value;
-    document.documentElement.dataset.theme=value;
-    document.documentElement.style.colorScheme=value==='system'?'light dark':value;
-    document.dispatchEvent(new Event('preview-theme'));
-    try{localStorage.setItem('integram-preview-theme',value);}catch{}
-  }
-  try{const saved=localStorage.getItem('integram-preview-theme');if(['system','light','dark'].includes(saved))theme.value=saved;}catch{}
-  theme.addEventListener('change',applyTheme);
-  window.addEventListener('hashchange',showConcept);
-  showConcept();applyTheme();
+const notes={contour:'Контур — список остаётся рядом с открытой записью; спокойный интерфейс для ежедневной работы.',register:'Реестр — компактная таблица, несколько уровней сортировки, группы и сохранённые виды.',focus:'Фокус — сделки по этапам, перенос карточек и настройка содержимого доски.'};const names={contour:'Контур',register:'Реестр',focus:'Фокус'};const instances={};let active=null;const theme=document.getElementById('preview-theme'),dataset=document.getElementById('preview-data');
+try{const stored=localStorage.getItem('integram-preview-theme');if(['system','light','dark'].includes(stored))theme.value=stored;}catch{}
+function applyTheme(){const value=theme.value;document.documentElement.dataset.theme=value;document.documentElement.style.colorScheme=value==='system'?'light dark':value;document.querySelectorAll('.ig').forEach(root=>root.style.colorScheme=value==='system'?'light dark':value);try{localStorage.setItem('integram-preview-theme',value);}catch{}}
+function show(){const slug=Object.hasOwn(notes,location.hash.slice(1))?location.hash.slice(1):'contour';if(active&&active!==slug&&instances[active]&&!instances[active].canLeave()){location.hash=active;return;}if(active&&active!==slug)document.getElementById('integram-'+active).replaceChildren();active=slug;for(const id of Object.keys(notes)){document.getElementById('panel-'+id).hidden=id!==slug;const link=document.querySelector('[data-concept="'+id+'"]');if(id===slug)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}document.getElementById('concept-note').textContent=notes[slug];document.title=names[slug]+' — редизайн Интеграма';if(!instances[slug])instances[slug]=new IntegramApp(slug,document.getElementById('integram-'+slug),dataset.value);instances[slug].render();applyTheme();}
+dataset.addEventListener('change',()=>{if(active&&!instances[active].canLeave()){dataset.value=instances[active].mode;return;}for(const [id,app] of Object.entries(instances)){app.abort.abort();delete instances[id];document.getElementById('integram-'+id).replaceChildren();}show();});theme.addEventListener('change',applyTheme);window.addEventListener('hashchange',show);window.addEventListener('beforeunload',e=>{if(active&&instances[active]?.dirty()){e.preventDefault();e.returnValue='';}});show();
 })();

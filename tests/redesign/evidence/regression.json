@@ -1,0 +1,162 @@
+[
+  {
+    "slug": "contour",
+    "name": "context",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "schema-validation",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "selection",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "range-multifilter",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "sort-group",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "columns-export",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "inline-history-reference",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "create-undo",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "views",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "mobile-board",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "constructor",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "drag",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "context",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "schema-validation",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "selection",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "range-multifilter",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "sort-group",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "columns-export",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "inline-history-reference",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "create-undo",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "views",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "mobile-board",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "context",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "schema-validation",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "selection",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "range-multifilter",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "sort-group",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "columns-export",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "inline-history-reference",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "create-undo",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "views",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "mobile-board",
+    "pass": true
+  }
+]

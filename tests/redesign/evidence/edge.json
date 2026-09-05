@@ -1,0 +1,44 @@
+[
+  {
+    "slug": "contour",
+    "theme": "light",
+    "axe": 0
+  },
+  {
+    "slug": "contour",
+    "theme": "dark",
+    "axe": 0
+  },
+  {
+    "slug": "contour",
+    "text200": "no clipping"
+  },
+  {
+    "slug": "register",
+    "theme": "light",
+    "axe": 0
+  },
+  {
+    "slug": "register",
+    "theme": "dark",
+    "axe": 0
+  },
+  {
+    "slug": "register",
+    "text200": "no clipping"
+  },
+  {
+    "slug": "focus",
+    "theme": "light",
+    "axe": 0
+  },
+  {
+    "slug": "focus",
+    "theme": "dark",
+    "axe": 0
+  },
+  {
+    "slug": "focus",
+    "text200": "no clipping"
+  }
+]
