@@ -5,7 +5,7 @@ const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
-const {spawn} = require('child_process');
+const {spawn, spawnSync} = require('child_process');
 const XLSX = require('../js/xlsx0.18.5.full.min.js');
 const {createXcomDemoServer} = require('../scripts/xcom-demo-server');
 
@@ -89,7 +89,7 @@ async function waitForExpression(cdp, expression, label) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-(async function run() {
+async function run() {
   const browserExecutable = [
     process.env.CHROME_BIN,
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -208,7 +208,23 @@ async function waitForExpression(cdp, expression, label) {
       if (error.code !== 'EPERM') throw error;
     }
   }
-})().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
+}
+
+if (typeof WebSocket === 'undefined') {
+  if (process.env.XCOM_BROWSER_WS_CHILD === '1') {
+    console.error(new Error('Node.js cannot enable the WebSocket client required by the browser test'));
+    process.exitCode = 1;
+  } else {
+    const child = spawnSync(process.execPath, ['--experimental-websocket', __filename], {
+      stdio: 'inherit',
+      env: Object.assign({}, process.env, {XCOM_BROWSER_WS_CHILD:'1'})
+    });
+    if (child.error) console.error(child.error);
+    process.exitCode = child.error ? 1 : (child.status == null ? 1 : child.status);
+  }
+} else {
+  run().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
