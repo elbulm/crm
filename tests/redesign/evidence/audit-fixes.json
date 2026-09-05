@@ -1,0 +1,239 @@
+[
+  {
+    "slug": "contour",
+    "name": "R01-number-input",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R02-inline-draft",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R03-R08-board-context-resize",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R04-empty-stage",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R05-undo-schema-views",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R06-incompatible-share",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R07-storage-recovery",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R09-panel-focus",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R10-filter-draft",
+    "pass": true
+  },
+  {
+    "slug": "contour",
+    "name": "R11-row-density",
+    "pass": true,
+    "regular": 75.390625,
+    "compact": 40
+  },
+  {
+    "slug": "contour",
+    "name": "R12-mobile-first-fold",
+    "pass": true,
+    "metrics": [
+      {
+        "width": 320,
+        "screen": "Таблица",
+        "firstRecordY": 501
+      },
+      {
+        "width": 320,
+        "screen": "Доска",
+        "firstRecordY": 599
+      },
+      {
+        "width": 390,
+        "screen": "Таблица",
+        "firstRecordY": 501
+      },
+      {
+        "width": 390,
+        "screen": "Доска",
+        "firstRecordY": 599
+      }
+    ]
+  },
+  {
+    "slug": "register",
+    "name": "R01-number-input",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R02-inline-draft",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R03-R08-board-context-resize",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R04-empty-stage",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R05-undo-schema-views",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R06-incompatible-share",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R07-storage-recovery",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R09-panel-focus",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R10-filter-draft",
+    "pass": true
+  },
+  {
+    "slug": "register",
+    "name": "R11-row-density",
+    "pass": true,
+    "regular": 59,
+    "compact": 40
+  },
+  {
+    "slug": "register",
+    "name": "R12-mobile-first-fold",
+    "pass": true,
+    "metrics": [
+      {
+        "width": 320,
+        "screen": "Таблица",
+        "firstRecordY": 505
+      },
+      {
+        "width": 320,
+        "screen": "Доска",
+        "firstRecordY": 603
+      },
+      {
+        "width": 390,
+        "screen": "Таблица",
+        "firstRecordY": 505
+      },
+      {
+        "width": 390,
+        "screen": "Доска",
+        "firstRecordY": 603
+      }
+    ]
+  },
+  {
+    "slug": "focus",
+    "name": "R01-number-input",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R02-inline-draft",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R03-R08-board-context-resize",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R04-empty-stage",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R05-undo-schema-views",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R06-incompatible-share",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R07-storage-recovery",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R09-panel-focus",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R10-filter-draft",
+    "pass": true
+  },
+  {
+    "slug": "focus",
+    "name": "R11-row-density",
+    "pass": true,
+    "regular": 75.390625,
+    "compact": 40
+  },
+  {
+    "slug": "focus",
+    "name": "R12-mobile-first-fold",
+    "pass": true,
+    "metrics": [
+      {
+        "width": 320,
+        "screen": "Таблица",
+        "firstRecordY": 501
+      },
+      {
+        "width": 320,
+        "screen": "Доска",
+        "firstRecordY": 610
+      },
+      {
+        "width": 390,
+        "screen": "Таблица",
+        "firstRecordY": 501
+      },
+      {
+        "width": 390,
+        "screen": "Доска",
+        "firstRecordY": 610
+      }
+    ]
+  }
+]
