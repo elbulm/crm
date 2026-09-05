@@ -64,11 +64,19 @@ h1, h2, p { margin-top: 0; }h1 { margin-bottom: 8px; font-size: 2.5rem; line-hei
 .run-setup-head p { max-width: 70ch; margin: 0; color: var(--muted); font-size: 14px; }
 .run-setup-head > span { padding: 7px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-dark); font-size: 12px; white-space: nowrap; }
 .run-files { display: grid; grid-template-columns: 1fr 1fr; }
-.run-files article { min-width: 0; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 4px 18px; }
+.run-files article { min-width: 0; padding: 20px 24px; display: grid; grid-template-columns: 1fr; gap: 4px 18px; }
 .run-files article + article { border-left: 1px solid var(--line); }
 .run-files .file-kind, .run-files small { color: var(--muted); font-size: 12px; }
 .run-files b, .run-files small { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-files .text-button { grid-column: 2; grid-row: 1 / 4; align-self: center; }
+.run-file-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+.run-files .text-button { align-self: center; padding: 0; font: inherit; font-weight: 700; }
+.file-picker { position: relative; display: inline-flex; cursor: pointer; }
+.file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.api-mode-note { padding: 11px 24px; border-top: 1px solid var(--line); background: var(--accent-soft); color: var(--accent-dark); font-size: 13px; }
+.api-mode-note.is-live { background: var(--good-soft); color: var(--good); }
+.api-mode-note.is-static { background: var(--warn-soft); color: var(--warn); }
+.safe-badge.is-live { background: var(--good-soft); color: var(--good); }
+.safe-badge.is-static { background: var(--warn-soft); color: var(--warn); }
 .run-launch { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 24px; background: var(--surface-2); border-top: 1px solid var(--line); }
 .run-launch p { margin: 0; color: var(--muted); font-size: 13px; }
 .next-action { margin-top: 20px; padding: 20px 22px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid var(--line); border-radius: 14px; }

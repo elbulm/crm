@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="xcom-api-base" content="">
   <title>Демо сопоставления номенклатуры</title>
   <link rel="stylesheet" href="./demo.css">
 </head>
@@ -16,7 +17,7 @@
       <button class="nav-link is-active" data-page="setup" data-mode="setup"><span>Настройка шаблона</span><small>для интегратора</small></button>
       <button class="nav-link" data-page="mass" data-mode="workspace"><span>Рабочее место</span><small>для оператора</small></button>
     </nav>
-    <span class="safe-badge">Тестовые данные</span>
+    <span class="safe-badge" id="execution-badge">Проверяем API…</span>
   </header>
 
   <main>
@@ -78,27 +79,28 @@
     <section class="page" id="mass" aria-labelledby="mass-title">
       <div class="page-head"><div><p class="eyebrow">Рабочий цикл · шаг 1 из 3</p><h1 id="mass-title">Проверьте файлы и запустите</h1><p>Система применит сохранённый профиль и отделит надёжные совпадения от тех, где нужно ваше решение.</p></div><span class="status-pill" id="run-status-pill">Готово к запуску</span></div>
       <section class="run-setup" aria-labelledby="run-files-title">
-        <div class="run-setup-head"><div><h2 id="run-files-title">Файлы этого запуска</h2><p>В демо уже подставлены безопасные примеры. В рабочей версии оператор выбирает новую заявку и актуальный каталог.</p></div><span>Порог автоподтверждения: <b id="saved-threshold">85%</b></span></div>
+        <div class="run-setup-head"><div><h2 id="run-files-title">Файлы этого запуска</h2><p>Можно оставить безопасные примеры или выбрать два своих файла. В API-режиме Excel разбирается и сопоставляется на сервере.</p></div><span>Порог автоподтверждения: <b id="saved-threshold">85%</b></span></div>
         <div class="run-files">
-          <article><span class="file-kind">Заявка клиента</span><b>Заявка_на_оборудование.xlsx</b><small>5 позиций · лист «Закупка»</small><button class="text-button" data-preview-file="rfp">Посмотреть</button></article>
-          <article><span class="file-kind">Каталог поставщика</span><b>Прайс_поставщика.xlsx</b><small>6 позиций · лист «Каталог»</small><button class="text-button" data-preview-file="sku">Посмотреть</button></article>
+          <article><span class="file-kind">Заявка клиента</span><b id="run-rfp-name">Заявка_на_оборудование.xlsx</b><small id="run-rfp-meta">5 позиций · лист «Закупка»</small><div class="run-file-actions"><button class="text-button" data-preview-file="rfp">Посмотреть пример</button><label class="text-button file-picker">Выбрать файл<input id="run-rfp-input" type="file" accept=".xlsx,.xls,.csv"></label></div></article>
+          <article><span class="file-kind">Каталог поставщика</span><b id="run-sku-name">Прайс_поставщика.xlsx</b><small id="run-sku-meta">6 позиций · лист «Каталог»</small><div class="run-file-actions"><button class="text-button" data-preview-file="sku">Посмотреть пример</button><label class="text-button file-picker">Выбрать файл<input id="run-sku-input" type="file" accept=".xlsx,.xls,.csv"></label></div></article>
         </div>
-        <div class="run-launch"><p><b>Что произойдёт:</b> 5 позиций будут проверены по артикулу, производителю, названию и цене.</p><button class="button primary" id="start-match">Запустить сопоставление</button></div>
+        <div class="api-mode-note" id="api-mode-note" role="status">Определяем доступность серверной обработки…</div>
+        <div class="run-launch"><p id="run-explanation"><b>Что произойдёт:</b> файлы отправятся в отдельную серверную задачу; вкладку не придётся нагружать разбором каталога.</p><button class="button primary" id="start-match">Запустить сопоставление</button></div>
       </section>
       <section class="panel file-preview" id="run-file-preview" hidden aria-live="polite">
         <div class="panel-head"><div><p class="eyebrow">Содержимое файла</p><h2 id="run-file-preview-title"></h2><p class="muted" id="run-file-preview-meta"></p></div><button class="text-button" id="close-run-file-preview">Скрыть</button></div>
         <div class="table-wrap"><table><thead id="run-file-preview-head"></thead><tbody id="run-file-preview-body"></tbody></table></div>
       </section>
       <div class="progress-panel" id="progress-panel" hidden><div><b id="progress-label">Подготовка…</b><span id="progress-count">0 из 5</span></div><progress id="match-progress" max="5" value="0"></progress></div>
-      <div class="stats" id="stats"><article><span>Всего</span><strong>5</strong></article><article><span>Найдено</span><strong id="found-stat">0</strong></article><article><span>На проверку</span><strong id="review-stat">0</strong></article><article><span>Без пары</span><strong id="empty-stat">0</strong></article></div>
+      <div class="stats" id="stats"><article><span>Всего</span><strong id="total-stat">5</strong></article><article><span>Найдено</span><strong id="found-stat">0</strong></article><article><span>На проверку</span><strong id="review-stat">0</strong></article><article><span>Без пары</span><strong id="empty-stat">0</strong></article></div>
       <div class="panel"><div class="panel-head"><div><h2>Результаты</h2><p class="muted" id="mass-status">После запуска результаты появятся здесь.</p></div></div><div class="table-wrap"><table><thead><tr><th>Позиция заявки</th><th>Подобранный товар</th><th>Совпадение</th><th>Статус</th></tr></thead><tbody id="result-body"><tr><td colspan="4" class="empty-cell">Сопоставление ещё не запускалось</td></tr></tbody></table></div></div>
-      <section class="next-action warning" id="mass-next" hidden><div><span class="next-action-mark" aria-hidden="true">!</span><div><p class="eyebrow">Следующий шаг</p><h2>Проверьте 1 спорную позицию</h2><p>Остальные результаты уже определены: три совпадения подтверждены автоматически, для одной позиции пары нет.</p></div></div><button class="button primary" data-go="review">Перейти к проверке</button></section>
+      <section class="next-action warning" id="mass-next" hidden><div><span class="next-action-mark" aria-hidden="true">!</span><div><p class="eyebrow">Следующий шаг</p><h2 id="mass-next-title">Проверьте спорные позиции</h2><p id="mass-next-copy">Сервер отделил надёжные совпадения от тех, где требуется решение человека.</p></div></div><button class="button primary" data-go="review">Перейти к проверке</button></section>
     </section>
 
     <section class="page" id="review" aria-labelledby="review-title">
       <div class="page-head"><div><p class="eyebrow">Рабочий цикл · шаг 2 из 3</p><h1 id="review-title">Выберите товар для монитора</h1><p id="review-description">Автоматического решения недостаточно. Сравните кандидатов или запросите объяснимую рекомендацию.</p></div><span class="status-pill" id="review-queue-pill">Осталась 1 позиция</span></div>
       <div class="review-layout">
-        <aside class="panel source-card"><p class="eyebrow">Из заявки</p><h2>Монитор 27″ QHD с USB-C</h2><dl><div><dt>Количество</dt><dd>12 шт.</dd></div><div><dt>Разрешение</dt><dd>2560 × 1440</dd></div><div><dt>Интерфейс</dt><dd>USB-C, питание 65 Вт</dd></div><div><dt>Ограничение</dt><dd>до 42 000 ₽</dd></div></dl><button class="button secondary full" id="ask-llm">Получить рекомендацию ИИ</button><div class="ai-note" id="ai-note" hidden></div></aside>
+        <aside class="panel source-card"><p class="eyebrow">Из заявки</p><h2 id="review-source-name">Монитор 27″ QHD с USB-C</h2><dl id="review-source-details"><div><dt>Количество</dt><dd>12 шт.</dd></div><div><dt>Ограничение</dt><dd>до 42 000 ₽</dd></div></dl><button class="button secondary full" id="ask-llm">Получить рекомендацию ИИ</button><div class="ai-note" id="ai-note" hidden></div></aside>
         <div><div class="candidate-list" id="candidate-list"></div><div class="decision-bar"><span id="decision-hint">Выберите подходящий товар</span><div><button class="button secondary" id="reject-all">Нет подходящего</button><button class="button primary" id="accept-candidate" disabled>Подтвердить</button></div></div><div class="panel history"><h2>История решений</h2><ul id="decision-history"><li>Решений пока нет.</li></ul></div></div>
       </div>
       <section class="next-action success" id="review-next" hidden><div><span class="next-action-mark" aria-hidden="true">✓</span><div><p class="eyebrow">Очередь разобрана</p><h2>Все позиции получили итоговый статус</h2><p>Решение записано в журнал. Результат можно передать клиенту или внешней системе.</p></div></div><button class="button primary" data-go="export">Перейти к выгрузке</button></section>
@@ -107,7 +109,7 @@
     <section class="page" id="export" aria-labelledby="export-title">
       <div class="page-head"><div><p class="eyebrow">Рабочий цикл · шаг 3 из 3</p><h1 id="export-title">Выгрузите готовый результат</h1><p id="export-description">Скачайте таблицу для работы или JSON для интеграции.</p></div><span class="status-pill" id="export-status-pill">Осталось принять решение</span></div>
       <section class="next-action warning export-blocker" id="export-blocker"><div><span class="next-action-mark" aria-hidden="true">!</span><div><p class="eyebrow">Выгрузка пока недоступна</p><h2>Завершите проверку спорной позиции</h2><p>Так в итоговый файл не попадёт неподтверждённое автоматическое предположение.</p></div></div><button class="button primary" data-go="review">Вернуться к проверке</button></section>
-      <div class="export-layout"><div class="panel"><h2>Состав выгрузки</h2><div class="export-summary"><div><span>Позиции заявки</span><b>5</b></div><div><span>Подтверждено</span><b id="confirmed-export">3</b></div><div><span>Без подходящей пары</span><b id="empty-export">1</b></div><div><span>Ожидает решения</span><b id="attention-export">1</b></div></div><label for="export-format">Формат</label><select id="export-format"><option value="xlsx">Excel (.xlsx)</option><option value="json">JSON</option></select><button class="button primary full" id="download-export" disabled>Скачать файл</button><a class="api-link" href="./matching_export.json" target="_blank" rel="noreferrer">Открыть пример API</a></div><div class="panel"><h2>Предпросмотр</h2><div class="table-wrap compact"><table><thead><tr><th>ID</th><th>Результат</th><th>Уверенность</th><th>Статус</th></tr></thead><tbody id="export-body"></tbody></table></div></div></div>
+      <div class="export-layout"><div class="panel"><h2>Состав выгрузки</h2><div class="export-summary"><div><span>Позиции заявки</span><b id="total-export">5</b></div><div><span>Подтверждено</span><b id="confirmed-export">3</b></div><div><span>Без подходящей пары</span><b id="empty-export">1</b></div><div><span>Ожидает решения</span><b id="attention-export">1</b></div></div><label for="export-format">Формат</label><select id="export-format"><option value="xlsx">Excel (.xlsx)</option><option value="json">JSON</option></select><button class="button primary full" id="download-export" disabled>Скачать файл</button><a class="api-link" id="api-result-link" href="./matching_export.json" target="_blank" rel="noreferrer">Открыть пример API</a></div><div class="panel"><h2>Предпросмотр</h2><div class="table-wrap compact"><table><thead><tr><th>ID</th><th>Результат</th><th>Уверенность</th><th>Статус</th></tr></thead><tbody id="export-body"></tbody></table></div></div></div>
       <section class="completion-note" id="completion-note" hidden><span aria-hidden="true">✓</span><p><b>Рабочий цикл завершён.</b> Для следующей заявки вернитесь в «Файлы и запуск» и выберите новые прайс-листы.</p><button class="button secondary" data-go="mass">Начать новый запуск</button></section>
     </section>
   </main>
