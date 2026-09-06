@@ -4,7 +4,8 @@
   "scripts": {
     "test": "node regression.cjs && node edges.cjs && node audit-fixes.cjs",
     "quality": "node quality.cjs",
-    "stress": "node stress.cjs"
+    "stress": "node stress.cjs",
+    "dictionaries": "node dictionaries.cjs"
   },
   "devDependencies": {"playwright": "1.62.1", "axe-core": "4.13.0"}
 }
