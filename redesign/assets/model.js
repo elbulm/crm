@@ -29,10 +29,12 @@ function shareCompatible(data,payload){
  if(v.screen==='board'&&!t.fields.some(f=>f.key==='stage'&&f.type==='choice'))return false;
  if((v.stageOrder||[]).some(s=>!t.fields.find(f=>f.key==='stage')?.options?.includes(s)))return false;
  for(const rule of v.filters||[]){const f=t.fields.find(f=>f.key===rule.key);if(['choice','reference'].includes(f.type)&&['eq','neq','in'].includes(rule.op)){const choices=f.type==='choice'?f.options:table(data,f.ref)?.rows.map(r=>String(r.id))||[];if((Array.isArray(rule.value)?rule.value:[rule.value]).some(x=>!choices.includes(String(x))))return false;}}
- if(payload.schema&&JSON.stringify(payload.schema)!==JSON.stringify(schemaSignature(t)))return false;
+ if(payload.schema&&(typeof payload.schema==='string'?payload.schema!==schemaToken(t):JSON.stringify(payload.schema)!==JSON.stringify(schemaSignature(t))))return false;
  return true;
 }
+// A compact compatibility checksum; no permissions or trust are derived from it.
+function schemaToken(t){const value=JSON.stringify(schemaSignature(t));let a=2166136261,b=2246822507;for(let i=0;i<value.length;i++){a=Math.imul(a^value.charCodeAt(i),16777619);b=Math.imul(b^value.charCodeAt(i),3266489909);}return 's1-'+(a>>>0).toString(16).padStart(8,'0')+(b>>>0).toString(16).padStart(8,'0');}
 function schemaSignature(t){return t.fields.map(f=>({key:f.key,label:f.label,type:f.type,ref:f.ref||null,options:f.options||null}));}
 function csv(data,t,rows,keys,separator=';'){const safe=(v,numeric=false)=>{let s=String(v??'');if(!numeric&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};const fields=keys.map(k=>t.fields.find(f=>f.key===k)).filter(Boolean);return '\uFEFF'+[fields.map(f=>safe(f.label)).join(separator),...rows.map(r=>fields.map(f=>safe(f.type==='number'?r[f.key]:label(data,f,r[f.key]),f.type==='number'&&Number.isFinite(Number(r[f.key])))).join(separator))].join('\r\n');}
-return {invalidate,clone,esc,money,date,table,label,defaults,normalize,query,validate,formValues,typedValues,shareCompatible,schemaSignature,csv};
+return {invalidate,clone,esc,money,date,table,label,defaults,normalize,query,validate,formValues,typedValues,shareCompatible,schemaSignature,schemaToken,csv};
 })();
