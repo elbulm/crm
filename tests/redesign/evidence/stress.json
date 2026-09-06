@@ -1,0 +1,368 @@
+[
+  {
+    "slug": "contour",
+    "name": "inventory-extremes",
+    "pass": true,
+    "inventory": [
+      {
+        "id": "deals",
+        "rows": 12000,
+        "fields": 36
+      },
+      {
+        "id": "items",
+        "rows": 50000,
+        "fields": 18
+      },
+      {
+        "id": "payments",
+        "rows": 25000,
+        "fields": 22
+      },
+      {
+        "id": "tasks",
+        "rows": 6000,
+        "fields": 16
+      },
+      {
+        "id": "companies",
+        "rows": 1200,
+        "fields": 14
+      },
+      {
+        "id": "products",
+        "rows": 1500,
+        "fields": 12
+      },
+      {
+        "id": "people",
+        "rows": 64,
+        "fields": 6
+      },
+      {
+        "id": "warehouses",
+        "rows": 18,
+        "fields": 7
+      },
+      {
+        "id": "claims",
+        "rows": 0,
+        "fields": 7
+      }
+    ]
+  },
+  {
+    "slug": "contour",
+    "name": "50000-search-sort-export",
+    "pass": true,
+    "coldSearchMs": 780,
+    "textSortMs": 370,
+    "exportMs": 852,
+    "exported": 50000,
+    "domNodes": 3696
+  },
+  {
+    "slug": "contour",
+    "name": "bounded-reference-filters",
+    "pass": true,
+    "matched": 21,
+    "maxOptions": 80,
+    "referenceCatalog": 12000
+  },
+  {
+    "slug": "contour",
+    "name": "delta-save-undo-schema",
+    "pass": true,
+    "saveMs": 357,
+    "storedCharacters": 349
+  },
+  {
+    "slug": "contour",
+    "name": "views-share-empty",
+    "pass": true,
+    "sharedRows": 284
+  },
+  {
+    "slug": "contour",
+    "name": "themes-widths-long-values",
+    "pass": true,
+    "screens": [
+      {
+        "theme": "light",
+        "table": "deals",
+        "axe": 0
+      },
+      {
+        "theme": "light",
+        "table": "items",
+        "axe": 0
+      },
+      {
+        "theme": "light",
+        "table": "payments",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "deals",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "items",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "payments",
+        "axe": 0
+      }
+    ],
+    "widthChecks": 30,
+    "mobileAxe": 0
+  },
+  {
+    "slug": "register",
+    "name": "inventory-extremes",
+    "pass": true,
+    "inventory": [
+      {
+        "id": "deals",
+        "rows": 12000,
+        "fields": 36
+      },
+      {
+        "id": "items",
+        "rows": 50000,
+        "fields": 18
+      },
+      {
+        "id": "payments",
+        "rows": 25000,
+        "fields": 22
+      },
+      {
+        "id": "tasks",
+        "rows": 6000,
+        "fields": 16
+      },
+      {
+        "id": "companies",
+        "rows": 1200,
+        "fields": 14
+      },
+      {
+        "id": "products",
+        "rows": 1500,
+        "fields": 12
+      },
+      {
+        "id": "people",
+        "rows": 64,
+        "fields": 6
+      },
+      {
+        "id": "warehouses",
+        "rows": 18,
+        "fields": 7
+      },
+      {
+        "id": "claims",
+        "rows": 0,
+        "fields": 7
+      }
+    ]
+  },
+  {
+    "slug": "register",
+    "name": "50000-search-sort-export",
+    "pass": true,
+    "coldSearchMs": 774,
+    "textSortMs": 407,
+    "exportMs": 823,
+    "exported": 50000,
+    "domNodes": 3696
+  },
+  {
+    "slug": "register",
+    "name": "bounded-reference-filters",
+    "pass": true,
+    "matched": 21,
+    "maxOptions": 80,
+    "referenceCatalog": 12000
+  },
+  {
+    "slug": "register",
+    "name": "delta-save-undo-schema",
+    "pass": true,
+    "saveMs": 348,
+    "storedCharacters": 349
+  },
+  {
+    "slug": "register",
+    "name": "views-share-empty",
+    "pass": true,
+    "sharedRows": 284
+  },
+  {
+    "slug": "register",
+    "name": "themes-widths-long-values",
+    "pass": true,
+    "screens": [
+      {
+        "theme": "light",
+        "table": "deals",
+        "axe": 0
+      },
+      {
+        "theme": "light",
+        "table": "items",
+        "axe": 0
+      },
+      {
+        "theme": "light",
+        "table": "payments",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "deals",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "items",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "payments",
+        "axe": 0
+      }
+    ],
+    "widthChecks": 30,
+    "mobileAxe": 0
+  },
+  {
+    "slug": "focus",
+    "name": "inventory-extremes",
+    "pass": true,
+    "inventory": [
+      {
+        "id": "deals",
+        "rows": 12000,
+        "fields": 36
+      },
+      {
+        "id": "items",
+        "rows": 50000,
+        "fields": 18
+      },
+      {
+        "id": "payments",
+        "rows": 25000,
+        "fields": 22
+      },
+      {
+        "id": "tasks",
+        "rows": 6000,
+        "fields": 16
+      },
+      {
+        "id": "companies",
+        "rows": 1200,
+        "fields": 14
+      },
+      {
+        "id": "products",
+        "rows": 1500,
+        "fields": 12
+      },
+      {
+        "id": "people",
+        "rows": 64,
+        "fields": 6
+      },
+      {
+        "id": "warehouses",
+        "rows": 18,
+        "fields": 7
+      },
+      {
+        "id": "claims",
+        "rows": 0,
+        "fields": 7
+      }
+    ]
+  },
+  {
+    "slug": "focus",
+    "name": "50000-search-sort-export",
+    "pass": true,
+    "coldSearchMs": 840,
+    "textSortMs": 393,
+    "exportMs": 814,
+    "exported": 50000,
+    "domNodes": 3696
+  },
+  {
+    "slug": "focus",
+    "name": "bounded-reference-filters",
+    "pass": true,
+    "matched": 21,
+    "maxOptions": 80,
+    "referenceCatalog": 12000
+  },
+  {
+    "slug": "focus",
+    "name": "delta-save-undo-schema",
+    "pass": true,
+    "saveMs": 349,
+    "storedCharacters": 349
+  },
+  {
+    "slug": "focus",
+    "name": "views-share-empty",
+    "pass": true,
+    "sharedRows": 284
+  },
+  {
+    "slug": "focus",
+    "name": "themes-widths-long-values",
+    "pass": true,
+    "screens": [
+      {
+        "theme": "light",
+        "table": "deals",
+        "axe": 0
+      },
+      {
+        "theme": "light",
+        "table": "items",
+        "axe": 0
+      },
+      {
+        "theme": "light",
+        "table": "payments",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "deals",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "items",
+        "axe": 0
+      },
+      {
+        "theme": "dark",
+        "table": "payments",
+        "axe": 0
+      }
+    ],
+    "widthChecks": 30,
+    "mobileAxe": 0
+  }
+]

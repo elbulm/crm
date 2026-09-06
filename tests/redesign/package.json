@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "node regression.cjs && node edges.cjs && node audit-fixes.cjs",
-    "quality": "node quality.cjs"
+    "quality": "node quality.cjs",
+    "stress": "node stress.cjs"
   },
   "devDependencies": {"playwright": "1.62.1", "axe-core": "4.13.0"}
 }
