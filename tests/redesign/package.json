@@ -5,7 +5,12 @@
     "test": "node regression.cjs && node edges.cjs && node audit-fixes.cjs",
     "quality": "node quality.cjs",
     "stress": "node stress.cjs",
-    "dictionaries": "node dictionaries.cjs"
+    "dictionaries": "node dictionaries.cjs",
+    "grouping-model": "node grouping-model.cjs && node columns-model.cjs && node pivot-model.cjs && node hierarchy-model.cjs",
+    "grouping-browser": "node grouping-integration.cjs && node columns-browser.cjs && node pivot-browser.cjs && node hierarchy-browser.cjs && node advanced-regressions.cjs"
   },
-  "devDependencies": {"playwright": "1.62.1", "axe-core": "4.13.0"}
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "axe-core": "4.13.0"
+  }
 }

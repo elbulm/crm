@@ -1,5 +1,14 @@
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Исправления функционала трёх макетов Интеграма и результаты проверки"><title>Исправления по аудиту — Интеграм</title><style>:root{color-scheme:light dark}body{font:16px/1.7 system-ui,sans-serif;background:light-dark(#f4f5f7,#181b20);color:light-dark(#242830,#e9ecf1);margin:0}main{max-width:1000px;margin:auto;padding:32px 24px 64px}a{color:light-dark(#1255a5,#a8cfff)}h1{font-size:30px;line-height:1.25}h2{font-size:22px;margin-top:36px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border-bottom:1px solid light-dark(#ccd2da,#49515d);text-align:left;padding:12px;vertical-align:top}th:first-child,td:first-child{width:31%}li{margin-bottom:10px}strong{font-weight:650}@media(max-width:600px){main{padding:24px 16px}table{font-size:13px}td,th{padding:10px 6px}h1{font-size:26px}}</style></head><body><main><nav aria-label="Навигация"><a href="./">← Вернуться к макетам</a></nav><h1>Исправления макетов по аудиту</h1>
 <p>Обновлены все три варианта: <strong>Контур, Реестр и Фокус</strong>. Изменения относятся к демонстрационным макетам на GitHub Pages. Рабочее приложение и PR #4887 не изменялись.</p>
+<h2>Сложные группировки · 6 сентября 2026</h2>
+<p>Во всех трёх вариантах реализованы четыре самостоятельных механизма. Откройте пример:</p>
+<ul><li><a href="./?data=stress&amp;example=groups#contour">Вложенные группы строк</a>: до шести уровней, поиск, раскрытие, отдельная сортировка групп и записей, условия по итогам, периоды дат, числовые диапазоны и метки.</li>
+<li><a href="./?data=stress&amp;screen=table#contour">Секции столбцов</a>: вложенность, перемещение, закрепление, несколько опорных полей при сворачивании, видимые признаки скрытых фильтров.</li>
+<li><a href="./?data=stress&amp;table=tasks&amp;screen=hierarchy#contour">Дерево из 6 000 задач</a> и <a href="./?data=stress&amp;table=deals&amp;screen=hierarchy#contour">связанные таблицы договоров</a>: собственные поля дочерних сущностей, независимые страницы веток, переход к полному реестру и возвращение.</li>
+<li><a href="./?data=stress&amp;screen=pivot#contour">Сводная матрица</a>: две вложенные оси, независимое раскрытие, промежуточные и общие итоги, показатели, детализация до записей и CSV.</li></ul>
+<p>Итоги считаются по всей отфильтрованной выборке. Валюты и единицы разделяются; пересечение групп меток не увеличивает общий итог. Опасное суммирование связанных чисел исключено. Изменение группы записи показывает конкретные поля и допускает отмену.</p>
+<p>Срез из группы или сводной сохраняет выбранные ID при сохранении вида; возвращение сохраняет исходную матрицу и раскрытие. Слишком большой результат или ссылка отклоняются явно. Данные остаются локальными демонстрационными: производственный сервер не подключён.</p>
+<p><strong>Проверки:</strong> 70 модельных сценариев, 44 новые браузерные цепочки и прежние проверки редактирования, фильтров, сортировки, справочников, экспорта и адаптации.</p>
 <h2>Отдельные справочники · 6 сентября 2026</h2>
 <p><a href="https://elbulm.github.io/crm/redesign/?data=stress&section=dictionaries#contour">Открыть раздел «Справочники»</a>.</p>
 <p>В навигации появился единый раздел источников выпадающих полей. В наборе «Рабочие крайности» доступны <strong>5 таблиц-справочников и 15 списков значений</strong>. Раздел также работает с небольшим примером, набором «Объём» и новыми полями, созданными в конструкторе.</p>
@@ -38,7 +47,7 @@
 <tr>
 <td>Задачи и замечания</td>
 <td align="right">6 000</td>
-<td align="right">16</td>
+<td align="right">17</td>
 </tr>
 <tr>
 <td>Контрагенты</td>

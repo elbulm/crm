@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-06",
+  "scope": "Local static redesign demos; no production API integration",
+  "models": {
+    "grouping": 19,
+    "columns": 17,
+    "pivot": 22,
+    "hierarchy": 12,
+    "total": 70
+  },
+  "browser": {
+    "grouping": 11,
+    "columns": 3,
+    "pivot": 3,
+    "hierarchy": 12,
+    "advancedRegressions": 15,
+    "total": 44
+  },
+  "existing": {
+    "regression": 32,
+    "auditFixes": 33,
+    "dictionaries": 15,
+    "stress": 18,
+    "edges": "all passed"
+  },
+  "quality": {
+    "axeScans": 132,
+    "axeFailures": 0,
+    "layouts": 330,
+    "overflow": 0,
+    "pageErrors": 0
+  },
+  "largeData": {
+    "rows": 50000,
+    "exportedRows": 50000,
+    "domNodes": 3721
+  },
+  "routes": [
+    "?data=stress&example=groups#contour",
+    "?data=stress&table=tasks&screen=hierarchy#contour",
+    "?data=stress&screen=pivot#contour"
+  ]
+}

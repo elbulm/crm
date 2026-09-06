@@ -1,0 +1,22 @@
+/* Matrix controls use the existing product tokens in all three concepts. */
+.ig .pivot-toolbar,.ig .pivot-pagination{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;font-size:12px;color:var(--ig-muted)}
+.ig .pivot-toolbar>span{margin-right:auto}.ig .pivot-description{font-size:12px;color:var(--ig-muted);padding-bottom:12px;max-width:90ch}
+.ig .pivot-wrap{max-width:100%;max-height:68vh;overflow:auto;border:1px solid var(--ig-line)}
+.ig .pivot-table{width:max-content;min-width:100%;table-layout:auto;border-collapse:separate;border-spacing:0}
+.ig .pivot-table th,.ig .pivot-table td{border-right:1px solid var(--ig-line);border-bottom:1px solid var(--ig-line);max-width:290px}
+.ig .pivot-table thead{position:sticky;top:0;z-index:5}.ig .pivot-table thead th{position:static;white-space:normal;min-width:125px;vertical-align:middle;text-align:center;background:var(--ig-soft)}
+.ig .pivot-table .pivot-row-head{position:sticky;left:0;min-width:230px;max-width:320px;width:260px;text-align:left;background:var(--ig-surface);z-index:2;white-space:normal;color:var(--ig-text);padding-left:calc(10px + var(--pivot-depth,0)*16px)}
+.ig .pivot-table thead .pivot-row-head{z-index:6;background:var(--ig-soft)}
+.ig .pivot-table .pivot-row-head small,.ig .pivot-ancestry{display:block;color:var(--ig-muted);font-size:11px;font-weight:400;margin-top:3px}.ig .pivot-ancestry{margin:0 0 4px;overflow-wrap:anywhere}
+.ig .pivot-axis-toggle{padding:3px 2px;border:0;background:transparent;text-align:inherit;font:inherit;font-weight:600;color:var(--ig-text);white-space:normal;overflow-wrap:anywhere}
+.ig .pivot-axis-toggle:hover{color:var(--ig-accent);text-decoration:underline;text-underline-offset:3px}
+.ig .pivot-value{display:block;width:100%;border:0;background:transparent;text-align:right;white-space:normal;padding:5px 1px;font:inherit;font-variant-numeric:tabular-nums;color:var(--ig-text);min-width:110px}
+.ig .pivot-value:hover:not(:disabled){color:var(--ig-accent);text-decoration:underline;text-underline-offset:3px}.ig .pivot-value:disabled{opacity:1;color:var(--ig-muted)}
+.ig .pivot-table .pivot-grand,.ig .pivot-table .pivot-grand-row>*{background:var(--ig-selected);font-weight:600}.ig .pivot-table .pivot-subtotal>*{background:var(--ig-soft)}
+.ig .pivot-warning{display:block;font-size:11px;max-width:220px;white-space:normal;color:var(--ig-warn)}
+.ig .pivot-pagination{justify-content:space-between}.ig .pivot-pagination span{text-align:center}
+.ig .pivot-limit{padding:22px;background:var(--ig-warn-bg);color:var(--ig-text);border:1px solid var(--ig-line);border-radius:var(--ig-radius)}.ig .pivot-limit p{max-width:70ch;margin:10px 0 16px}.ig .pivot-limit .button{margin:0 8px 8px 0;white-space:normal}
+.ig .pivot-axis-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:16px 0}.ig .pivot-axis-settings{min-width:0;border:1px solid var(--ig-line);border-radius:var(--ig-radius);padding:12px}.ig .pivot-axis-settings legend{font-weight:600;padding:0 6px}
+.ig .pivot-rule{display:grid;grid-template-columns:minmax(120px,2fr) minmax(100px,1fr);gap:9px;padding:12px 0;border-bottom:1px solid var(--ig-line);margin-bottom:10px}.ig .pivot-rule .field{min-width:0}.ig .pivot-rule-actions{display:flex;align-items:center;gap:6px;grid-column:1/-1}.ig .pivot-settings select{max-width:100%}
+@media(max-width:700px){.ig .pivot-axis-grid{grid-template-columns:minmax(0,1fr);gap:12px}.ig .pivot-table .pivot-row-head{min-width:145px;width:145px;max-width:160px;font-size:12px}.ig .pivot-table th,.ig .pivot-table td{max-width:190px}.ig .pivot-toolbar>span{width:100%}.ig .pivot-pagination{justify-content:center}.ig .pivot-pagination span{order:-1;width:100%}.ig .pivot-rule{grid-template-columns:minmax(0,1fr)}.ig .pivot-wrap{max-height:62vh}.ig .pivot-settings{padding-inline:12px}}
+.ig .pivot-toolbar .pivot-mobile-config{display:none;margin-right:0}@media(max-width:700px){.ig .pivot-toolbar .pivot-mobile-config{display:contents}}
