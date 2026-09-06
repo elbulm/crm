@@ -7,7 +7,8 @@
     "stress": "node stress.cjs",
     "dictionaries": "node dictionaries.cjs",
     "grouping-model": "node grouping-model.cjs && node columns-model.cjs && node pivot-model.cjs && node hierarchy-model.cjs",
-    "grouping-browser": "node grouping-integration.cjs && node columns-browser.cjs && node pivot-browser.cjs && node hierarchy-browser.cjs && node advanced-regressions.cjs"
+    "grouping-browser": "node grouping-integration.cjs && node columns-browser.cjs && node pivot-browser.cjs && node hierarchy-browser.cjs && node advanced-regressions.cjs",
+    "onboarding": "node site-navigation.cjs && node onboarding.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1",

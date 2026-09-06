@@ -20,3 +20,18 @@
 .ig .pivot-rule{display:grid;grid-template-columns:minmax(120px,2fr) minmax(100px,1fr);gap:9px;padding:12px 0;border-bottom:1px solid var(--ig-line);margin-bottom:10px}.ig .pivot-rule .field{min-width:0}.ig .pivot-rule-actions{display:flex;align-items:center;gap:6px;grid-column:1/-1}.ig .pivot-settings select{max-width:100%}
 @media(max-width:700px){.ig .pivot-axis-grid{grid-template-columns:minmax(0,1fr);gap:12px}.ig .pivot-table .pivot-row-head{min-width:145px;width:145px;max-width:160px;font-size:12px}.ig .pivot-table th,.ig .pivot-table td{max-width:190px}.ig .pivot-toolbar>span{width:100%}.ig .pivot-pagination{justify-content:center}.ig .pivot-pagination span{order:-1;width:100%}.ig .pivot-rule{grid-template-columns:minmax(0,1fr)}.ig .pivot-wrap{max-height:62vh}.ig .pivot-settings{padding-inline:12px}}
 .ig .pivot-toolbar .pivot-mobile-config{display:none;margin-right:0}@media(max-width:700px){.ig .pivot-toolbar .pivot-mobile-config{display:contents}}
+/* A matrix keeps both axes on small screens; it must not inherit record-card layout. */
+@media(max-width:650px){
+ .ig .data-table.pivot-table{display:table;width:max-content!important;min-width:100%;table-layout:auto}
+ .ig .data-table.pivot-table colgroup{display:table-column-group}
+ .ig .data-table.pivot-table thead{display:table-header-group}
+ .ig .data-table.pivot-table tbody{display:table-row-group}
+ .ig .data-table.pivot-table tr{display:table-row;padding:0;border:0;position:static}
+ .ig .data-table.pivot-table th,.ig .data-table.pivot-table td{display:table-cell;width:auto;height:auto;min-height:0;padding:10px;border-right:1px solid var(--ig-line);border-bottom:1px solid var(--ig-line);vertical-align:middle}
+ .ig .data-table.pivot-table td{background:var(--ig-surface)!important;text-align:right;position:static}
+ .ig .data-table.pivot-table td::before{display:none!important}
+ .ig .data-table.pivot-table thead th{position:static;text-align:center;background:var(--ig-soft)}
+ .ig .data-table.pivot-table .pivot-row-head{position:sticky;left:0;width:145px;min-width:145px;max-width:160px;text-align:left;padding-left:calc(10px + var(--pivot-depth,0)*16px)}
+ .ig .data-table.pivot-table .pivot-subtotal>*{background:var(--ig-soft)!important}
+ .ig .data-table.pivot-table .pivot-grand,.ig .data-table.pivot-table .pivot-grand-row>*{background:var(--ig-selected)!important}
+}

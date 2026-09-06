@@ -1,0 +1,25 @@
+/* The guide stays outside the application root, so normal table renders preserve it. */
+.ig-tour{--tour-surface:light-dark(oklch(99% .004 250),oklch(24% .008 250));--tour-text:light-dark(oklch(29% .012 250),oklch(94% .008 250));--tour-muted:light-dark(oklch(47% .018 250),oklch(76% .013 250));--tour-line:light-dark(oklch(84% .012 250),oklch(43% .015 250));--tour-accent:light-dark(oklch(47% .16 260),oklch(79% .10 255));position:fixed;inset:0;z-index:10000;pointer-events:none;font-family:'Segoe UI',Arial,sans-serif;color:var(--tour-text);font-size:14px;line-height:1.5}
+.ig-tour *{box-sizing:border-box}
+.ig-tour [hidden]{display:none!important}
+.ig-tour-spotlight{position:fixed;border:2px solid var(--tour-accent);border-radius:7px;box-shadow:0 0 0 3px light-dark(oklch(86% .075 255 / .55),oklch(71% .09 255 / .4)),0 0 0 150vmax oklch(18% .016 250 / .16);pointer-events:none}
+.ig-tour-card{position:fixed;width:344px;min-width:0;padding:0 18px 16px;border:1px solid var(--tour-line);border-radius:10px;background:var(--tour-surface);box-shadow:0 8px 28px oklch(14% .016 250 / .18);pointer-events:auto;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;overflow-wrap:anywhere}
+.ig-tour-top{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:1;background:var(--tour-surface);padding:10px 0 7px;min-height:48px}
+.ig-tour-progress{color:var(--tour-muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ig-tour button{font:inherit;cursor:pointer;border-radius:6px;min-height:36px;line-height:1.3;text-align:center;white-space:normal}
+.ig-tour button:focus-visible,.ig-tour-heading:focus-visible{outline:2px solid var(--tour-accent);outline-offset:3px}
+.ig-tour-skip{border:0;background:transparent;color:var(--tour-muted);padding:8px 0 8px 8px;text-decoration:underline;text-underline-offset:3px;font-size:12px!important}
+.ig-tour-skip:hover{color:var(--tour-text)}
+.ig-tour-name{margin:0 0 5px;color:var(--tour-muted);font-size:12px;line-height:1.45}
+.ig-tour-heading{font-size:18px;font-weight:650;letter-spacing:-.15px;line-height:1.35;margin:0 0 8px;outline:none}
+.ig-tour-body{font-size:14px;line-height:1.55;margin:0;color:var(--tour-text)}
+.ig-tour-missing{font-size:12px;line-height:1.5;margin:12px 0 0;color:var(--tour-muted)}
+.ig-tour-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.ig-tour-locate,.ig-tour-restart{padding:7px 10px;color:var(--tour-text);background:var(--tour-surface);border:1px solid var(--tour-line);font-size:12px!important}
+.ig-tour-locate:hover,.ig-tour-restart:hover{background:light-dark(oklch(95% .008 250),oklch(31% .009 250))}
+.ig-tour-next{padding:8px 14px;background:var(--tour-accent);color:light-dark(oklch(99% .004 250),oklch(20% .015 250));border:1px solid transparent;font-size:13px!important;font-weight:600!important}
+.ig-tour-next:hover{filter:brightness(.95)}
+.ig-tour-live{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@media(max-width:650px){.ig-tour-card{padding:0 14px 14px;width:320px;border-radius:9px}.ig-tour-top{min-height:48px;padding-top:5px;padding-bottom:3px}.ig-tour button{min-height:40px}.ig-tour-heading{font-size:17px;margin-bottom:6px}.ig-tour-body{font-size:13px;line-height:1.5}.ig-tour-name{font-size:11px}.ig-tour-actions{margin-top:11px;gap:6px}}
+@media(prefers-reduced-motion:reduce){.ig-tour *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(forced-colors:active){.ig-tour-card,.ig-tour-spotlight{border:2px solid Highlight}.ig-tour-spotlight{box-shadow:none}.ig-tour-next{border:1px solid ButtonText}.ig-tour button:focus-visible{outline:2px solid Highlight}}

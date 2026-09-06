@@ -1,7 +1,7 @@
 const {fs,path,reportDir,chromium,server,start}=require('./harness.cjs'),assert=require('node:assert/strict');
 const results=[];
 (async()=>{const local=await start(),base=process.env.BASE_URL||local,browser=await chromium.launch({headless:true,channel:'chrome'});try{
-for(const slug of ['contour','register','focus']){
+for(const slug of ['contour']){
 const ctx=await browser.newContext({viewport:{width:1440,height:1000},bypassCSP:true}),page=await ctx.newPage(),errors=[];page.setDefaultTimeout(16000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
 await page.addInitScript(()=>{let Klass;Object.defineProperty(window,'IntegramApp',{configurable:true,get(){return Klass;},set(value){Klass=value;const render=value.prototype.render;value.prototype.render=function(...args){window.__pivotApps??={};window.__pivotApps[this.id]=this;return render.apply(this,args);};}});});
 try{const url=new URL(base);url.searchParams.set('data','stress');url.hash=slug;await page.goto(url.href);const r=page.locator('#integram-'+slug),b=name=>r.getByRole('button',{name,exact:true});await r.locator('[data-action="screen"][data-screen="pivot"]').click();await r.locator('.pivot-table').waitFor();assert.match(await r.locator('.pivot-toolbar').innerText(),/12.?000/);
